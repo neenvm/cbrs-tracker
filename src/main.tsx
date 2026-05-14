@@ -971,6 +971,44 @@ const normalizeHyperCandles = (candles: HyperCandle[]): ChartCandle[] =>
     }))
     .filter((candle) => [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite));
 
+const mergeLiveHyperTick = (candlesByInterval: ChartCandleMap, price: number, timeMs = Date.now()): ChartCandleMap =>
+  Object.fromEntries(
+    CHART_INTERVALS.map((interval) => {
+      const bucketTime = Math.floor(timeMs / interval.ms) * interval.ms;
+      const candles = candlesByInterval[interval.id] ?? [];
+      const last = candles.at(-1);
+      if (last && last.time === bucketTime) {
+        return [
+          interval.id,
+          [
+            ...candles.slice(0, -1),
+            {
+              ...last,
+              high: Math.max(last.high, price),
+              low: Math.min(last.low, price),
+              close: price
+            }
+          ]
+        ];
+      }
+      if (last && last.time > bucketTime) return [interval.id, candles];
+      const open = last?.close ?? price;
+      return [
+        interval.id,
+        [
+          ...candles,
+          {
+            time: bucketTime,
+            open,
+            high: Math.max(open, price),
+            low: Math.min(open, price),
+            close: price
+          }
+        ].slice(-5000)
+      ];
+    })
+  ) as ChartCandleMap;
+
 async function fetchHyperCandles(interval: ChartInterval, startTime: number, endTime: number) {
   const response = await fetch("/hyperliquid-info", {
     method: "POST",
@@ -2235,6 +2273,13 @@ function App() {
       return [...current, point].slice(-90);
     });
   }, [polymarketSharePrice, data.hyperPrice]);
+
+  React.useEffect(() => {
+    if (data.hyperPrice == null || !Number.isFinite(data.hyperPrice) || data.hyperPrice <= 0) return;
+    const hyperPrice = data.hyperPrice;
+    setHyperCandleHistory((current) => mergeLiveHyperTick(current, hyperPrice));
+  }, [data.hyperPrice]);
+
   React.useEffect(() => {
     if (lower.length === 0 || upper.length === 0) return;
     let cancelled = false;
