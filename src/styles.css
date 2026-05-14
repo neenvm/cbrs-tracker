@@ -1,9 +1,21 @@
 :root {
-  color: #d8dde7;
-  background: #080a0f;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f4e9d5;
+  background: #07101c;
+  font-family: "Geist Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --xyz-bg: #07101c;
+  --xyz-bg-2: #091525;
+  --xyz-panel: rgba(8, 18, 31, 0.96);
+  --xyz-panel-2: #0a1729;
+  --xyz-border: #24344b;
+  --xyz-border-2: #31445f;
+  --xyz-cream: #f4e9d5;
+  --xyz-gold: #f9bd29;
+  --xyz-muted: #96b0b9;
+  --xyz-blue: #6f94ff;
+  --xyz-green: #68d391;
+  --xyz-red: #ff8c7a;
 }
 
 * {
@@ -14,11 +26,13 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #080a0f;
+  background-color: var(--xyz-bg);
   background-image:
-    linear-gradient(rgba(89, 114, 153, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(89, 114, 153, 0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(115deg, rgba(249, 189, 41, 0.11) 0 1px, transparent 1px 120px),
+    linear-gradient(rgba(150, 176, 185, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(150, 176, 185, 0.06) 1px, transparent 1px);
+  background-size: 180px 180px, 32px 32px, 32px 32px;
+  background-position: 0 0, 0 0, 0 0;
 }
 
 button,
@@ -45,7 +59,7 @@ p {
   gap: 24px;
   margin-bottom: 14px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #223042;
+  border-bottom: 1px solid var(--xyz-border);
 }
 
 .eyebrow {
@@ -53,8 +67,7 @@ p {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  color: #7dd3fc;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-gold);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -62,12 +75,22 @@ p {
 
 h1 {
   max-width: 920px;
-  color: #f2f6ff;
-  font-family: Charter, "Iowan Old Style", Georgia, serif;
+  color: var(--xyz-cream);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: clamp(1.8rem, 3vw, 3.35rem);
-  font-weight: 600;
+  font-weight: 750;
   line-height: 1.05;
   letter-spacing: 0;
+}
+
+h1::before {
+  color: var(--xyz-gold);
+  content: "[";
+}
+
+h1::after {
+  color: var(--xyz-gold);
+  content: "]";
 }
 
 .statusRow {
@@ -83,23 +106,22 @@ h1 {
   gap: 6px;
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid #2a3748;
+  border: 1px solid var(--xyz-border-2);
   border-radius: 3px;
-  color: #9aa7ba;
-  background: #0d1118;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-muted);
+  background: var(--xyz-panel-2);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
 .status.live {
-  color: #6ee7b7;
-  border-color: rgba(110, 231, 183, 0.45);
+  color: var(--xyz-gold);
+  border-color: rgba(249, 189, 41, 0.55);
 }
 
 .status.error {
-  color: #fca5a5;
-  border-color: rgba(252, 165, 165, 0.45);
+  color: var(--xyz-red);
+  border-color: rgba(255, 140, 122, 0.48);
 }
 
 .notice {
@@ -110,7 +132,7 @@ h1 {
   padding: 10px 12px;
   border: 1px solid rgba(245, 158, 11, 0.45);
   border-radius: 3px;
-  color: #f8d8a8;
+  color: var(--xyz-cream);
   background: rgba(69, 43, 11, 0.38);
 }
 
@@ -123,9 +145,9 @@ h1 {
 
 .metric,
 .panel {
-  border: 1px solid #223042;
+  border: 1px solid var(--xyz-border);
   border-radius: 3px;
-  background: rgba(10, 14, 21, 0.94);
+  background: var(--xyz-panel);
 }
 
 .metric {
@@ -141,20 +163,29 @@ h1 {
   width: 30px;
   height: 30px;
   place-items: center;
-  border: 1px solid #314157;
+  border: 1px solid var(--xyz-border-2);
   border-radius: 2px;
-  color: #93c5fd;
-  background: #0b1220;
+  color: var(--xyz-gold);
+  background: #111522;
+}
+
+.metric::before,
+.panel::before {
+  display: block;
+  height: 1px;
+  background: linear-gradient(90deg, var(--xyz-gold), transparent 34%);
+  content: "";
+  grid-column: 1 / -1;
 }
 
 .metric.positive .metricIcon {
-  color: #6ee7b7;
-  border-color: rgba(110, 231, 183, 0.45);
+  color: var(--xyz-green);
+  border-color: rgba(104, 211, 145, 0.45);
 }
 
 .metric.negative .metricIcon {
-  color: #fca5a5;
-  border-color: rgba(252, 165, 165, 0.45);
+  color: var(--xyz-red);
+  border-color: rgba(255, 140, 122, 0.48);
 }
 
 .metric p,
@@ -162,12 +193,11 @@ h1 {
 .caption,
 .basisNote,
 .sourceBox span {
-  color: #8b98aa;
+  color: var(--xyz-muted);
 }
 
 .metric p {
   margin-bottom: 8px;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -175,8 +205,7 @@ h1 {
 
 .metric strong {
   display: block;
-  color: #f2f6ff;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-cream);
   font-size: clamp(1.15rem, 1.7vw, 1.65rem);
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
@@ -185,7 +214,7 @@ h1 {
 .metric span {
   display: block;
   margin-top: 10px;
-  color: #aab4c3;
+  color: #c1c9c2;
   font-size: 0.78rem;
   line-height: 1.35;
 }
@@ -208,7 +237,7 @@ h1 {
   gap: 16px;
   margin-bottom: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #1c2838;
+  border-bottom: 1px solid var(--xyz-border);
 }
 
 .panelHeader.compact {
@@ -217,21 +246,19 @@ h1 {
 
 .panelHeader p {
   margin-bottom: 3px;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .panelHeader h2 {
-  color: #f2f6ff;
+  color: var(--xyz-cream);
   font-size: 1rem;
   font-weight: 650;
 }
 
 .panelHeader span {
-  color: #8b98aa;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-muted);
   font-size: 0.72rem;
   white-space: nowrap;
 }
@@ -250,8 +277,7 @@ h1 {
 
 .barLabel,
 .barValue {
-  color: #d8dde7;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-cream);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -265,16 +291,16 @@ h1 {
 .miniBar {
   height: 11px;
   overflow: hidden;
-  border: 1px solid #1c2838;
+  border: 1px solid var(--xyz-border);
   border-radius: 2px;
-  background: #0b111a;
+  background: #06101c;
 }
 
 .barFill,
 .miniBarFill {
   height: 100%;
   border-radius: 0;
-  background: #7dd3fc;
+  background: var(--xyz-gold);
 }
 
 .miniBar {
@@ -282,15 +308,15 @@ h1 {
 }
 
 .miniBarFill.green {
-  background: #6ee7b7;
+  background: var(--xyz-green);
 }
 
 .miniBarFill.red {
-  background: #fca5a5;
+  background: var(--xyz-red);
 }
 
 .miniBarFill.gold {
-  background: #fbbf24;
+  background: var(--xyz-gold);
 }
 
 .caption {
@@ -304,17 +330,16 @@ h1 {
   display: grid;
   gap: 5px;
   padding: 10px;
-  border: 1px solid #26364a;
+  border: 1px solid var(--xyz-border-2);
   border-radius: 2px;
-  background: #0b111a;
+  background: var(--xyz-panel-2);
 }
 
 .methodFormula span,
 .basisAuditRow span,
 .qualityGrid span,
 .detailItem span {
-  color: #8b98aa;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-muted);
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -323,8 +348,7 @@ h1 {
 .methodFormula strong,
 .basisAuditRow strong,
 .basisAuditRow small {
-  color: #f2f6ff;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-cream);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
 }
@@ -339,7 +363,7 @@ h1 {
 .basisAudit {
   display: grid;
   margin-top: 10px;
-  border: 1px solid #1c2838;
+  border: 1px solid var(--xyz-border);
   border-bottom: 0;
 }
 
@@ -350,11 +374,11 @@ h1 {
   align-items: center;
   min-height: 34px;
   padding: 8px 9px;
-  border-bottom: 1px solid #1c2838;
+  border-bottom: 1px solid var(--xyz-border);
 }
 
 .basisAuditRow small {
-  color: #7dd3fc;
+  color: var(--xyz-gold);
   text-align: right;
 }
 
@@ -362,13 +386,13 @@ h1 {
   display: grid;
   gap: 5px;
   padding: 10px;
-  border: 1px solid #26364a;
+  border: 1px solid var(--xyz-border-2);
   border-radius: 2px;
-  background: rgba(125, 211, 252, 0.04);
+  background: rgba(249, 189, 41, 0.055);
 }
 
 .sourceBox strong {
-  color: #7dd3fc;
+  color: var(--xyz-gold);
   font-size: 0.84rem;
 }
 
@@ -390,22 +414,21 @@ h1 {
   gap: 6px;
   min-height: 82px;
   padding: 10px;
-  border: 1px solid #1c2838;
+  border: 1px solid var(--xyz-border);
   border-radius: 2px;
-  background: #0b111a;
+  background: var(--xyz-panel-2);
 }
 
 .qualityGrid strong,
 .detailItem strong {
-  color: #f2f6ff;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-cream);
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
 
 .qualityGrid small,
 .detailItem small {
-  color: #aab4c3;
+  color: #c1c9c2;
   font-size: 0.78rem;
   line-height: 1.35;
 }
@@ -415,18 +438,18 @@ h1 {
   gap: 8px;
   margin-top: 10px;
   padding: 11px;
-  border: 1px solid #26364a;
+  border: 1px solid var(--xyz-border-2);
   border-radius: 2px;
-  background: #0b111a;
+  background: var(--xyz-panel-2);
 }
 
 .watchList strong {
-  color: #7dd3fc;
+  color: var(--xyz-gold);
   font-size: 0.88rem;
 }
 
 .watchList span {
-  color: #aab4c3;
+  color: #c1c9c2;
   font-size: 0.82rem;
   line-height: 1.5;
 }
@@ -443,9 +466,9 @@ h1 {
   align-content: start;
   gap: 9px;
   padding: 10px;
-  border: 1px solid #1c2838;
+  border: 1px solid var(--xyz-border);
   border-radius: 2px;
-  background: #0b111a;
+  background: var(--xyz-panel-2);
 }
 
 .depthHeader,
@@ -457,14 +480,13 @@ h1 {
 }
 
 .depthHeader strong {
-  color: #f2f6ff;
+  color: var(--xyz-cream);
   font-size: 0.9rem;
 }
 
 .depthHeader span,
 .bookTotals span {
-  color: #8b98aa;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-muted);
   font-size: 0.68rem;
   font-weight: 800;
 }
@@ -473,7 +495,7 @@ h1 {
 .pmQualityTable {
   display: grid;
   gap: 0;
-  border: 1px solid #1c2838;
+  border: 1px solid var(--xyz-border);
   border-bottom: 0;
 }
 
@@ -485,14 +507,13 @@ h1 {
   align-items: center;
   min-height: 28px;
   padding: 5px 7px;
-  border-bottom: 1px solid #1c2838;
+  border-bottom: 1px solid var(--xyz-border);
 }
 
 .orderBookHead,
 .pmQualityHead {
-  color: #8b98aa;
-  background: #0d1520;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--xyz-muted);
+  background: #0c1b30;
   font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -502,18 +523,17 @@ h1 {
 .pmQualityRow strong,
 .pmQualityRow > span,
 .measureCell span {
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
 }
 
 .bidText {
-  color: #6ee7b7;
+  color: var(--xyz-green);
   text-align: right;
 }
 
 .askText {
-  color: #fca5a5;
+  color: var(--xyz-red);
 }
 
 .measureCell {
@@ -525,7 +545,7 @@ h1 {
 }
 
 .measureCell span {
-  color: #aab4c3;
+  color: #c1c9c2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -539,15 +559,15 @@ h1 {
   align-items: center;
   min-height: 30px;
   padding: 5px 7px;
-  border-bottom: 1px solid #1c2838;
+  border-bottom: 1px solid var(--xyz-border);
 }
 
 .pmQualityRow strong {
-  color: #f2f6ff;
+  color: var(--xyz-cream);
 }
 
 .pmQualityRow > span {
-  color: #d8dde7;
+  color: var(--xyz-cream);
   text-align: right;
 }
 
@@ -564,26 +584,25 @@ table {
 th,
 td {
   padding: 10px 9px;
-  border-bottom: 1px solid #1c2838;
+  border-bottom: 1px solid var(--xyz-border);
   text-align: left;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
 }
 
 th {
-  color: #8b98aa;
-  background: #0d1520;
+  color: var(--xyz-muted);
+  background: #0c1b30;
   font-size: 0.66rem;
   text-transform: uppercase;
 }
 
 td {
-  color: #d8dde7;
+  color: var(--xyz-cream);
 }
 
 tbody tr:hover {
-  background: rgba(125, 211, 252, 0.04);
+  background: rgba(249, 189, 41, 0.045);
 }
 
 @media (max-width: 1120px) {

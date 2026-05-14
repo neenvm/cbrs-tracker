@@ -732,7 +732,7 @@ function App() {
         <div>
           <div className="eyebrow">
             <Activity size={16} />
-            CBRS IPO Price Discovery
+            trade[XYZ] style · CBRS IPO price discovery
           </div>
           <h1>Cerebras market-cap implied share price</h1>
         </div>
