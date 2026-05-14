@@ -2111,6 +2111,11 @@ function App() {
   const weightedQuoteWeight = probabilityTotal
     ? distribution.reduce((sum, row) => sum + row.quoteWeight * row.probability, 0) / probabilityTotal
     : 0;
+  const lowConfidenceMass = distribution.reduce((sum, row) => sum + (row.priceConfidence === "low" ? row.probability : 0), 0);
+  const wideSpreadMass = distribution.reduce((sum, row) => {
+    const spread = row.bid != null && row.ask != null ? row.ask - row.bid : null;
+    return sum + (spread != null && spread >= 0.08 ? row.probability : 0);
+  }, 0);
   const under50Anchor = upper.find((row) => row.low == null && row.high === 50e9)?.yesPrice ?? null;
   const atLeast50Anchor = lower.find((row) => row.low === 50e9 && row.high == null)?.yesPrice ?? null;
   const bookRowCount = Math.max(hyperBidLevels.length, hyperAskLevels.length);
@@ -2484,7 +2489,17 @@ function App() {
                 <div>
                   <span>Quote weight</span>
                   <strong>{formatPercent(weightedQuoteWeight)}</strong>
-                  <small>Probability-weighted live quote influence</small>
+                  <small>Probability-weighted live quote influence after spread/depth caps</small>
+                </div>
+                <div>
+                  <span>Wide-spread mass</span>
+                  <strong>{formatPercent(wideSpreadMass)}</strong>
+                  <small>Bracket probability with at least 8c bid/ask spread; quote influence is capped</small>
+                </div>
+                <div>
+                  <span>Low-confidence mass</span>
+                  <strong>{formatPercent(lowConfidenceMass)}</strong>
+                  <small>Probability priced mostly from trades/Gamma because books are thin or wide</small>
                 </div>
                 <div>
                   <span>Anchor split</span>
