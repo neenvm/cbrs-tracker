@@ -1,5 +1,7 @@
 # CBRS Tracker
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fneenvm%2Fcbrs-tracker)
+
 A small live dashboard for comparing Cerebras (`CBRS`) IPO price discovery across:
 
 - Hyperliquid / trade[XYZ] `xyz:CBRS`
@@ -110,6 +112,27 @@ Build:
 ```bash
 npm run build
 ```
+
+## Deploy
+
+The app is ready for Vercel. It does not need API keys.
+
+Fastest path:
+
+1. Click the Deploy with Vercel button above, or import `https://github.com/neenvm/cbrs-tracker` into Vercel.
+2. Use the default Vite settings:
+   - Build command: `npm run build`
+   - Output directory: `dist`
+3. Deploy.
+
+The included `vercel.json` proxies these public endpoints in production:
+
+- `/polymarket-gamma/*` -> Polymarket Gamma
+- `/polymarket-clob/*` -> Polymarket CLOB
+- `/polymarket-data/*` -> Polymarket Data API
+- `/hyperliquid-info` -> Hyperliquid Info API
+
+The live WebSocket connections go directly to Polymarket CLOB and Hyperliquid. `.vercelignore` excludes local task notes, `node_modules`, and build output from the deployment upload.
 
 ## Tech
 

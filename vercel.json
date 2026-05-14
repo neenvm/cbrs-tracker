@@ -1,0 +1,23 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/polymarket-gamma/:path*",
+      "destination": "https://gamma-api.polymarket.com/:path*"
+    },
+    {
+      "source": "/polymarket-clob/:path*",
+      "destination": "https://clob.polymarket.com/:path*"
+    },
+    {
+      "source": "/polymarket-data/:path*",
+      "destination": "https://data-api.polymarket.com/:path*"
+    },
+    {
+      "source": "/hyperliquid-info",
+      "destination": "https://api.hyperliquid.xyz/info"
+    }
+  ]
+}
