@@ -79,6 +79,17 @@ type PolymarketTrade = {
   name?: string;
   pseudonym?: string;
   transactionHash?: string;
+  source?: "data" | "clob";
+};
+
+type OutcomeTokenRef = {
+  tokenId: string;
+  conditionId: string;
+  outcome: string;
+  outcomeIndex: number;
+  title: string;
+  slug: string;
+  eventSlug: string;
 };
 
 type HyperLevel = {
@@ -198,6 +209,7 @@ type DashboardState = {
   polymarketMidpoints: Record<string, number>;
   polymarketDepth: Record<string, PolymarketDepth>;
   polymarketTrades: PolymarketTrade[];
+  polymarketStreamStatus: "connecting" | "streaming" | "polling";
   hyperPrice: number | null;
   hyperQuality: HyperQuality | null;
   hyperStatus: "connecting" | "live" | "polling" | "stale" | "error";
@@ -564,6 +576,31 @@ function getYesTokenIds(events: PolymarketEvent[]) {
   );
 }
 
+function getOutcomeTokenRefs(events: PolymarketEvent[]): OutcomeTokenRef[] {
+  return events.flatMap((event) =>
+    event.markets.flatMap((market) => {
+      if (!market.conditionId || /not IPO before July/i.test(market.question) || !parseBracket(market.question)) return [];
+      const outcomes = parseJsonArray<string>(market.outcomes);
+      const tokens = parseJsonArray<string>(market.clobTokenIds);
+      return tokens.flatMap((tokenId, outcomeIndex) =>
+        tokenId
+          ? [
+              {
+                tokenId,
+                conditionId: market.conditionId,
+                outcome: outcomes[outcomeIndex] ?? `Outcome ${outcomeIndex + 1}`,
+                outcomeIndex,
+                title: market.question,
+                slug: market.slug,
+                eventSlug: event.slug
+              }
+            ]
+          : []
+      );
+    })
+  );
+}
+
 function getBracketConditionIds(events: PolymarketEvent[]) {
   return events.flatMap((event) =>
     event.markets.flatMap((market) => {
@@ -642,11 +679,25 @@ async function fetchPolymarketTrades(conditionIds: string[]) {
   return raw
     .map((trade) => ({
       ...trade,
+      source: "data" as const,
       size: Number(trade.size),
       price: Number(trade.price),
       timestamp: Number(trade.timestamp)
     }))
     .filter((trade) => Number.isFinite(trade.size) && Number.isFinite(trade.price) && Number.isFinite(trade.timestamp));
+}
+
+const tradeKey = (trade: PolymarketTrade) => {
+  if (trade.transactionHash) return `tx-${trade.transactionHash}-${trade.asset}`;
+  return `${trade.source ?? "data"}-${trade.asset}-${trade.timestamp}-${trade.side}-${trade.outcome}-${trade.size}-${trade.price}`;
+};
+
+function mergePolymarketTrades(current: PolymarketTrade[], incoming: PolymarketTrade[]) {
+  const byKey = new Map<string, PolymarketTrade>();
+  [...incoming, ...current].forEach((trade) => {
+    byKey.set(tradeKey(trade), trade);
+  });
+  return [...byKey.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 180);
 }
 
 async function fetchHyperMid() {
@@ -847,6 +898,7 @@ function useDashboardData() {
     polymarketMidpoints: {},
     polymarketDepth: {},
     polymarketTrades: [],
+    polymarketStreamStatus: "connecting",
     hyperPrice: null,
     hyperQuality: null,
     hyperStatus: "connecting",
@@ -855,33 +907,37 @@ function useDashboardData() {
     error: null
   });
 
-  React.useEffect(() => {
-    let cancelled = false;
-    let hyperSocket: WebSocket | null = null;
-    let pollId: number | null = null;
+	  React.useEffect(() => {
+	    let cancelled = false;
+	    let hyperSocket: WebSocket | null = null;
+	    let polymarketSocket: WebSocket | null = null;
+	    let polymarketSocketKey = "";
+	    let pollId: number | null = null;
 
-    const loadPolymarket = async () => {
-      try {
-        const [lowerEvent, upperEvent] = await Promise.all([fetchEvent(LOWER_SLUG), fetchEvent(UPPER_SLUG)]);
-        const yesTokenIds = getYesTokenIds([lowerEvent, upperEvent]);
-        const conditionIds = getBracketConditionIds([lowerEvent, upperEvent]);
-        const [polymarketMidpoints, polymarketDepth, polymarketTrades] = await Promise.all([
-          fetchPolymarketMidpoints(yesTokenIds),
-          fetchPolymarketBooks(yesTokenIds),
-          fetchPolymarketTrades(conditionIds).catch(() => [] as PolymarketTrade[])
-        ]);
-        if (cancelled) return;
-        setState((current) => ({
-          ...current,
-          lowerEvent,
-          upperEvent,
-          polymarketMidpoints,
-          polymarketDepth,
-          polymarketTrades,
-          polymarketStatus: "live",
-          lastUpdated: Date.now(),
-          error: null
-        }));
+	    const loadPolymarket = async () => {
+	      try {
+	        const [lowerEvent, upperEvent] = await Promise.all([fetchEvent(LOWER_SLUG), fetchEvent(UPPER_SLUG)]);
+	        const yesTokenIds = getYesTokenIds([lowerEvent, upperEvent]);
+	        const outcomeTokenRefs = getOutcomeTokenRefs([lowerEvent, upperEvent]);
+	        const conditionIds = getBracketConditionIds([lowerEvent, upperEvent]);
+	        const [polymarketMidpoints, polymarketDepth, polymarketTrades] = await Promise.all([
+	          fetchPolymarketMidpoints(yesTokenIds),
+	          fetchPolymarketBooks(yesTokenIds),
+	          fetchPolymarketTrades(conditionIds).catch(() => [] as PolymarketTrade[])
+	        ]);
+	        if (cancelled) return;
+	        startPolymarketSocket(outcomeTokenRefs, yesTokenIds);
+	        setState((current) => ({
+	          ...current,
+	          lowerEvent,
+	          upperEvent,
+	          polymarketMidpoints,
+	          polymarketDepth,
+	          polymarketTrades: mergePolymarketTrades(current.polymarketTrades, polymarketTrades),
+	          polymarketStatus: "live",
+	          lastUpdated: Date.now(),
+	          error: null
+	        }));
       } catch (error) {
         if (cancelled) return;
         setState((current) => ({
@@ -890,7 +946,120 @@ function useDashboardData() {
           error: error instanceof Error ? error.message : "Polymarket fetch failed"
         }));
       }
-    };
+	    };
+
+	    const startPolymarketSocket = (outcomeTokenRefs: OutcomeTokenRef[], yesTokenIds: string[]) => {
+	      const tokenIds = [...new Set(outcomeTokenRefs.map((ref) => ref.tokenId).filter(Boolean))];
+	      const nextKey = tokenIds.join(",");
+	      if (!tokenIds.length || nextKey === polymarketSocketKey) return;
+	      polymarketSocketKey = nextKey;
+	      polymarketSocket?.close();
+	      const refByToken = new Map(outcomeTokenRefs.map((ref) => [ref.tokenId, ref]));
+	      const yesTokenSet = new Set(yesTokenIds);
+	      const updateYesDepth = (assetId: string, depth: PolymarketDepth) => {
+	        if (!yesTokenSet.has(assetId)) return;
+	        const midpoint = depth.bestBid != null && depth.bestAsk != null ? (depth.bestBid + depth.bestAsk) / 2 : null;
+	        setState((current) => ({
+	          ...current,
+	          polymarketDepth: { ...current.polymarketDepth, [assetId]: depth },
+	          polymarketMidpoints: midpoint == null ? current.polymarketMidpoints : { ...current.polymarketMidpoints, [assetId]: midpoint },
+	          polymarketStreamStatus: "streaming",
+	          polymarketStatus: "live",
+	          lastUpdated: Date.now()
+	        }));
+	      };
+	      try {
+	        polymarketSocket = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
+	        setState((current) => ({ ...current, polymarketStreamStatus: "connecting" }));
+	        polymarketSocket.addEventListener("open", () => {
+	          polymarketSocket?.send(JSON.stringify({ assets_ids: tokenIds, type: "market", custom_feature_enabled: true }));
+	          setState((current) => ({ ...current, polymarketStreamStatus: "streaming", polymarketStatus: "live" }));
+	        });
+	        polymarketSocket.addEventListener("message", (event) => {
+	          const parsed = JSON.parse(event.data as string) as unknown;
+	          const messages = Array.isArray(parsed) ? parsed : [parsed];
+	          messages.forEach((message) => {
+	            const payload = message as {
+	              event_type?: string;
+	              asset_id?: string;
+	              market?: string;
+	              bids?: BookLevel[];
+	              asks?: BookLevel[];
+	              timestamp?: string | number;
+	              price?: string | number;
+	              size?: string | number;
+	              side?: string;
+	              price_changes?: Array<{ asset_id: string; best_bid?: string; best_ask?: string; price?: string; size?: string; side?: string }>;
+	            };
+	            if (payload.event_type === "book" && payload.asset_id && payload.bids && payload.asks) {
+	              updateYesDepth(payload.asset_id, summarizePolymarketBook({ asset_id: payload.asset_id, bids: payload.bids, asks: payload.asks, timestamp: String(payload.timestamp ?? "") }));
+	            }
+	            if (payload.event_type === "price_change" && payload.price_changes) {
+	              const midpointUpdates: Record<string, number> = {};
+	              payload.price_changes.forEach((change) => {
+	                if (!yesTokenSet.has(change.asset_id)) return;
+	                const bid = Number(change.best_bid);
+	                const ask = Number(change.best_ask);
+	                const price = Number(change.price);
+	                const midpoint = Number.isFinite(bid) && Number.isFinite(ask) && ask > 0 ? (bid + ask) / 2 : price;
+	                if (Number.isFinite(midpoint)) midpointUpdates[change.asset_id] = midpoint;
+	              });
+	              if (Object.keys(midpointUpdates).length) {
+	                setState((current) => ({
+	                  ...current,
+	                  polymarketMidpoints: { ...current.polymarketMidpoints, ...midpointUpdates },
+	                  polymarketStreamStatus: "streaming",
+	                  polymarketStatus: "live",
+	                  lastUpdated: Date.now()
+	                }));
+	              }
+	            }
+	            if (payload.event_type === "last_trade_price" && payload.asset_id) {
+	              const ref = refByToken.get(payload.asset_id);
+	              const price = Number(payload.price);
+	              const size = Number(payload.size);
+	              const timestampRaw = Number(payload.timestamp);
+	              if (!ref || !Number.isFinite(price) || !Number.isFinite(size) || !Number.isFinite(timestampRaw)) return;
+	              const trade: PolymarketTrade = {
+	                proxyWallet: "",
+	                side: payload.side ?? "UNKNOWN",
+	                asset: payload.asset_id,
+	                conditionId: ref.conditionId,
+	                size,
+	                price,
+	                timestamp: timestampRaw > 10_000_000_000 ? Math.floor(timestampRaw / 1000) : timestampRaw,
+	                title: ref.title,
+	                slug: ref.slug,
+	                eventSlug: ref.eventSlug,
+	                outcome: ref.outcome,
+	                outcomeIndex: ref.outcomeIndex,
+	                pseudonym: "CLOB live",
+	                source: "clob"
+	              };
+	              setState((current) => ({
+	                ...current,
+	                polymarketTrades: mergePolymarketTrades(current.polymarketTrades, [trade]),
+	                polymarketStreamStatus: "streaming",
+	                polymarketStatus: "live",
+	                lastUpdated: Date.now()
+	              }));
+	            }
+	          });
+	        });
+	        polymarketSocket.addEventListener("error", () => {
+	          setState((current) => ({ ...current, polymarketStreamStatus: "polling" }));
+	        });
+	        polymarketSocket.addEventListener("close", () => {
+	          if (!cancelled) {
+	            setState((current) => ({ ...current, polymarketStreamStatus: "polling" }));
+	            polymarketSocketKey = "";
+	            window.setTimeout(() => startPolymarketSocket(outcomeTokenRefs, yesTokenIds), 2500);
+	          }
+	        });
+	      } catch {
+	        setState((current) => ({ ...current, polymarketStreamStatus: "polling" }));
+	      }
+	    };
 
     const pollHyper = async (status: DashboardState["hyperStatus"] = "polling") => {
       try {
@@ -960,10 +1129,11 @@ function useDashboardData() {
     }, LIVE_REFRESH_MS);
 
     return () => {
-      cancelled = true;
-      if (pollId) window.clearInterval(pollId);
-      hyperSocket?.close();
-    };
+	      cancelled = true;
+	      if (pollId) window.clearInterval(pollId);
+	      hyperSocket?.close();
+	      polymarketSocket?.close();
+	    };
   }, []);
 
   return state;
@@ -1534,10 +1704,10 @@ function App() {
           </a>
         </div>
         <div className="statusRow">
-          <span className={`status ${data.polymarketStatus}`}>
-            <Wifi size={14} />
-            Polymarket {data.polymarketStatus}
-          </span>
+	          <span className={`status ${data.polymarketStatus}`}>
+	            <Wifi size={14} />
+	            Polymarket {data.polymarketStreamStatus === "streaming" ? "streaming" : data.polymarketStatus}
+	          </span>
           <span className={`status ${data.hyperStatus}`}>
             <RefreshCw size={14} />
             Hyperliquid {data.hyperStatus}
@@ -1827,10 +1997,11 @@ function App() {
             </div>
           </div>
         </div>
-        <p className="caption">
-          Hyperliquid price and book depth stream over WebSocket, with volume/open-interest context refreshed every {LIVE_REFRESH_MS / 1000} seconds. Polymarket
-          CLOB midpoints and books are polled every {LIVE_REFRESH_MS / 1000} seconds; Gamma volume/liquidity fields refresh on that same cadence. Polymarket
-          depth is shallow near the touch in several brackets, so the visual bars matter more than the combined headline total of{" "}
+	        <p className="caption">
+	          Hyperliquid price and book depth stream over WebSocket, with volume/open-interest context refreshed every {LIVE_REFRESH_MS / 1000} seconds. Polymarket
+	          CLOB prices, matched trades, and book updates stream over the official market websocket when connected; Gamma volume/liquidity and wallet-attributed
+	          trades refresh every {LIVE_REFRESH_MS / 1000} seconds. Polymarket
+	          depth is shallow near the touch in several brackets, so the visual bars matter more than the combined headline total of{" "}
           {formatMaybeCompactUsd(distributionDepth)}.
         </p>
       </section>
@@ -1841,7 +2012,10 @@ function App() {
             <p>Polymarket Trade Monitor</p>
             <h2>Recent bracket trades explaining PM moves</h2>
           </div>
-          <span>{annotatedTrades.length ? `${annotatedTrades.length} latest trades` : "Waiting for trades"}</span>
+	          <span>
+	            {data.polymarketStreamStatus === "streaming" ? "CLOB websocket live" : "Polling fallback"} ·{" "}
+	            {annotatedTrades.length ? `${annotatedTrades.length} latest trades` : "waiting for trades"}
+	          </span>
         </div>
         <div className="tradeMonitorGrid">
           <div className="tradePressure">
@@ -1886,13 +2060,14 @@ function App() {
                     </div>
                     <div className="tradeDetail">
                       <b>{trade.yesDirection === "up" ? "Yes pressure up" : "Yes pressure down"}</b>
-                      <span>
-                        {trade.side} {trade.outcome} · {formatCompactUsd(trade.notional)} at {formatPercent(trade.price)}
-                      </span>
+	                      <span>
+	                        {trade.source === "clob" ? "Live CLOB" : "Wallet API"} · {trade.side} {trade.outcome} · {formatCompactUsd(trade.notional)} at{" "}
+	                        {formatPercent(trade.price)}
+	                      </span>
                     </div>
                     <div className="tradeWallet">
                       <span>{trade.traderLabel}</span>
-                      <small>{shortAddress(trade.proxyWallet)}</small>
+	                      <small>{trade.source === "clob" ? "wallet pending" : shortAddress(trade.proxyWallet)}</small>
                       {txHref ? (
                         <a href={txHref} target="_blank" rel="noreferrer">
                           tx
@@ -1902,14 +2077,14 @@ function App() {
                   </div>
                 );
               })}
-              {annotatedTrades.length === 0 ? <p className="emptyState">No trade feed data yet. The Data API is polled with the rest of Polymarket.</p> : null}
+	              {annotatedTrades.length === 0 ? <p className="emptyState">No trade feed data yet. CLOB websocket trades appear first; wallet attribution follows from the Data API poll.</p> : null}
             </div>
           </div>
         </div>
         <p className="caption">
-          Direction is normalized to the Yes side: BUY Yes and SELL No push the bracket's Yes probability up; SELL Yes and BUY No push it down. This makes
-          pumps/dumps easier to read when the raw trade is on the No token.
-        </p>
+	          Direction is normalized to the Yes side: BUY Yes and SELL No push the bracket's Yes probability up; SELL Yes and BUY No push it down. Live CLOB
+	          trade events are fastest but do not include wallets; wallet-linked rows come from the Data API as soon as it updates.
+	        </p>
       </section>
 
       <section className="panel ipoPanel">

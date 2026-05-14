@@ -66,13 +66,13 @@ Hyperliquid:
 Polymarket:
 
 - Event metadata comes from Gamma.
-- Yes-token midpoints come from the CLOB midpoint endpoint.
-- Order-book depth comes from the CLOB books endpoint.
-- Recent bracket trades come from the public Polymarket Data API `/trades` endpoint.
+- Yes-token midpoints, matched trades, and book changes stream from the official CLOB market WebSocket when connected.
+- REST CLOB midpoint/book endpoints remain as a 5-second fallback and reconciliation layer.
+- Wallet-attributed recent bracket trades come from the public Polymarket Data API `/trades` endpoint.
 - Historical chart points come from the CLOB price-history endpoint.
-- Polymarket CLOB/Gamma data refreshes every 5 seconds.
+- Gamma volume/liquidity fields and wallet-attributed trades refresh every 5 seconds.
 
-The trade monitor normalizes trade direction to the Yes side. `BUY Yes` and `SELL No` count as upward pressure for a bracket; `SELL Yes` and `BUY No` count as downward pressure. This makes a Polymarket pump/dump easier to explain even when the raw trade happened on the No token.
+The trade monitor normalizes trade direction to the Yes side. `BUY Yes` and `SELL No` count as upward pressure for a bracket; `SELL Yes` and `BUY No` count as downward pressure. This makes a Polymarket pump/dump easier to explain even when the raw trade happened on the No token. Live CLOB trades are fastest but do not include wallet/profile fields; wallet-linked attribution appears when the Data API updates.
 
 The app uses no private API keys.
 
