@@ -38,7 +38,7 @@ The current official post-offering share count used by the app is `215,228,541`,
 
 For the chart, historical Polymarket-implied CBRS values are reconstructed from public CLOB Yes-token price history for every required bracket and `$50B` anchor market. The app uses the highest-density accepted public history shape currently observed for this endpoint: 14 days at 5-minute fidelity. A historical point is emitted only after all required Yes tokens have historical coverage; current live prices are not backfilled into old points.
 
-Chart controls select candle aggregation interval, not the visible date range. Hyperliquid candles and the Polymarket overlay are bucketed to the selected interval (`5m`, `15m`, or `1h`) while the x-axis displays local date plus 12-hour time.
+Chart controls select candle aggregation interval, not the visible date range. Hyperliquid candles and the Polymarket overlay are bucketed to the selected interval (`1m`, `5m`, `15m`, or `1h`) while the x-axis displays compact local time/date labels. The chart supports normal wheel/pinch zooming and drag panning; use `Fit` to reset the view to all loaded data.
 
 The app also summarizes the Polymarket resolution rules: the markets resolve on Cerebras' market capitalization at the official first-day closing price, using official company filings/disclosures for share count and the primary exchange official listing page for closing price. Exact boundary values resolve to the higher bracket, and if no IPO occurs by June 30, 2026 at 11:59 PM ET, the no-IPO-before-July market resolves Yes.
 

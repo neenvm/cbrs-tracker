@@ -5,11 +5,13 @@ import {
   ColorType,
   CrosshairMode,
   LineSeries,
+  TickMarkType,
   createChart,
   type CandlestickData,
   type IChartApi,
   type ISeriesApi,
   type LineData,
+  type Time,
   type UTCTimestamp
 } from "lightweight-charts";
 import { Activity, AlertTriangle, BarChart3, CircleDollarSign, RefreshCw, Scale, Wifi } from "lucide-react";
@@ -152,9 +154,10 @@ type ChartCandle = {
   close: number;
 };
 
-type ChartInterval = "5m" | "15m" | "1h";
+type ChartInterval = "1m" | "5m" | "15m" | "1h";
 
 const CHART_INTERVALS: Array<{ id: ChartInterval; label: string; ms: number }> = [
+  { id: "1m", label: "1m", ms: 60_000 },
   { id: "5m", label: "5m", ms: 5 * 60_000 },
   { id: "15m", label: "15m", ms: 15 * 60_000 },
   { id: "1h", label: "1h", ms: 60 * 60_000 }
@@ -286,6 +289,48 @@ const formatChartAxisTime = (value: number | Date) =>
     minute: "2-digit",
     hour12: true
   }).format(value);
+
+const chartTimeToMs = (time: Time | unknown) => {
+  if (typeof time === "number") return time * 1000;
+  if (typeof time === "string") return new Date(`${time}T00:00:00`).getTime();
+  if (time && typeof time === "object" && "year" in time && "month" in time && "day" in time) {
+    const businessDay = time as { year: number; month: number; day: number };
+    return new Date(businessDay.year, businessDay.month - 1, businessDay.day).getTime();
+  }
+  return NaN;
+};
+
+const formatChartTick = (time: Time, tickMarkType: TickMarkType, locale: string) => {
+  const timeMs = chartTimeToMs(time);
+  if (!Number.isFinite(timeMs)) return null;
+  const date = new Date(timeMs);
+  if (tickMarkType === TickMarkType.Year) {
+    return new Intl.DateTimeFormat(locale, { year: "numeric" }).format(date);
+  }
+  if (tickMarkType === TickMarkType.Month) {
+    return new Intl.DateTimeFormat(locale, { month: "short" }).format(date);
+  }
+  if (tickMarkType === TickMarkType.DayOfMonth) {
+    return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date);
+  }
+  if (tickMarkType === TickMarkType.TimeWithSeconds) {
+    return new Intl.DateTimeFormat(locale, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(date);
+  }
+  const parts = new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  const period = parts.find((part) => part.type === "dayPeriod")?.value?.slice(0, 1).toLowerCase() ?? "";
+  return `${hour}:${minute}${period}`;
+};
 
 const parseJsonArray = <T,>(value: string): T[] => {
   try {
@@ -1039,6 +1084,7 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
   const chartRef = React.useRef<IChartApi | null>(null);
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
   const hlSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const lastAutoFitRef = React.useRef<{ interval: ChartInterval | null; start: number | null; end: number | null }>({ interval: null, start: null, end: null });
   const [interval, setInterval] = React.useState<ChartInterval>("15m");
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const selectedInterval = CHART_INTERVALS.find((item) => item.id === interval) ?? CHART_INTERVALS[1];
@@ -1080,14 +1126,15 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
         borderColor: "rgba(82, 96, 120, 0.22)",
         timeVisible: true,
         secondsVisible: false,
-        tickMarkFormatter: (time: unknown) => formatChartAxisTime(Number(time) * 1000)
+        tickMarkFormatter: formatChartTick,
+        lockVisibleTimeRangeOnResize: true
       },
       localization: {
         timeFormatter: (time: unknown) => formatChartAxisTime(Number(time) * 1000),
         priceFormatter: (price: number) => formatUsd(price, 2)
       },
-      handleScale: false,
-      handleScroll: false
+      handleScale: true,
+      handleScroll: true
     });
     const pmSeries = chart.addSeries(LineSeries, {
       color: "#2557d6",
@@ -1138,10 +1185,20 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
     const candleData = toCandleData(displayCandles);
     pmSeriesRef.current?.setData(pmData);
     hlSeriesRef.current?.setData(candleData);
-    if (pmData.length || candleData.length) {
+    const dataTimes = [...pmData.map((point) => Number(point.time)), ...candleData.map((candle) => Number(candle.time))];
+    if (dataTimes.length === 0) return;
+    const start = Math.min(...dataTimes);
+    const end = Math.max(...dataTimes);
+    const previous = lastAutoFitRef.current;
+    const shouldAutoFit =
+      previous.start == null ||
+      previous.interval !== interval ||
+      (Number.isFinite(start) && previous.start != null && start < previous.start - selectedInterval.ms / 1000);
+    if (shouldAutoFit) {
       chartRef.current?.timeScale().fitContent();
     }
-  }, [points, displayCandles, selectedInterval.ms]);
+    lastAutoFitRef.current = { interval, start, end };
+  }, [points, displayCandles, interval, selectedInterval.ms]);
 
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
@@ -1160,6 +1217,9 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
               {item.label}
             </button>
           ))}
+          <button type="button" onClick={() => chartRef.current?.timeScale().fitContent()}>
+            Fit
+          </button>
         </div>
       </div>
       <div className="chartReadout">
