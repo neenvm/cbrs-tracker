@@ -1588,7 +1588,17 @@ const toCandleData = (candles: ChartCandle[]): CandlestickData<UTCTimestamp>[] =
     close: candle.close
   }));
 
-function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { points: PricePoint[]; candlesByInterval: ChartCandleMap; historyStatus: string }) {
+function PriceComparisonChart({
+  points,
+  candlesByInterval,
+  historyStatus,
+  hyperQuality
+}: {
+  points: PricePoint[];
+  candlesByInterval: ChartCandleMap;
+  historyStatus: string;
+  hyperQuality: HyperQuality | null;
+}) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
@@ -1723,6 +1733,7 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
 
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
+  const readoutSpreadPct = readoutSpread != null && readout?.polymarket ? readoutSpread / readout.polymarket : null;
 
   return (
     <section className="panel priceChartPanel">
@@ -1746,7 +1757,15 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
       <div className="chartReadout">
         <span>PM {readout?.polymarket == null ? "n/a" : formatUsd(readout.polymarket)}</span>
         <span>HL candle {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
-        <span>Spread {readoutSpread == null ? "n/a" : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)}`}</span>
+        <span>
+          Spread{" "}
+          {readoutSpread == null
+            ? "n/a"
+            : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)} / ${readoutSpreadPct == null ? "n/a" : formatSignedPercent(readoutSpreadPct)}`}
+        </span>
+        <span>HL 24h vol {formatMaybeCompactUsd(hyperQuality?.dayVolume)}</span>
+        <span>HL OI {formatMaybeNumber(hyperQuality?.openInterest)}</span>
+        <span>HL funding {formatMaybeFundingRate(hyperQuality?.fundingRate)}</span>
         <span>{readout?.time ? formatChartAxisTime(readout.time * 1000) : "Waiting for data"}</span>
       </div>
       <div className="marketChart" ref={containerRef} />
@@ -2017,7 +2036,7 @@ function App() {
       </section>
 
       <section className="workspace">
-        <PriceComparisonChart points={chartPoints} candlesByInterval={hyperCandleHistory} historyStatus={historyStatus} />
+        <PriceComparisonChart points={chartPoints} candlesByInterval={hyperCandleHistory} historyStatus={historyStatus} hyperQuality={data.hyperQuality} />
 
         <aside className="panel methodologyPanel">
           <div className="panelHeader compact">
