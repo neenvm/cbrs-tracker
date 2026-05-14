@@ -1828,6 +1828,16 @@ function App() {
   const offeredFloatPct = IPO_OFFERED_SHARES / OFFICIAL_POST_OFFERING_SHARES;
   const offeredFloatWithOptionPct = (IPO_OFFERED_SHARES + IPO_OVERALLOTMENT_SHARES) / OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES;
   const maxProbability = Math.max(...distribution.map((row) => row.probability), 0.01);
+  const probabilityTotal = distribution.reduce((sum, row) => sum + row.probability, 0);
+  const topProbabilityRow = distribution.reduce<(MarketBracket & { probability: number; method: string }) | null>(
+    (top, row) => (!top || row.probability > top.probability ? row : top),
+    null
+  );
+  const weightedQuoteWeight = probabilityTotal
+    ? distribution.reduce((sum, row) => sum + row.quoteWeight * row.probability, 0) / probabilityTotal
+    : 0;
+  const under50Anchor = upper.find((row) => row.low == null && row.high === 50e9)?.yesPrice ?? null;
+  const atLeast50Anchor = lower.find((row) => row.low === 50e9 && row.high == null)?.yesPrice ?? null;
   const bookRowCount = Math.max(hyperBidLevels.length, hyperAskLevels.length);
   const noIpoPrice =
     upper.find((row) => /not IPO/i.test(row.label))?.yesPrice ??
@@ -2068,6 +2078,68 @@ function App() {
                 </div>
               );
             })}
+          </div>
+          <div className="formulaPanel">
+            <div className="formulaHeader">
+              <div>
+                <span>Live PM Calculation</span>
+                <strong>How the implied closing CBRS price is derived</strong>
+              </div>
+              <em>updates with Polymarket quotes, trades, depth, and brackets</em>
+            </div>
+            <div className="formulaGrid">
+              <div className="equationStack" aria-label="Polymarket implied price equations">
+                <div className="equationLine">
+                  <code>
+                    q<sub>i</sub> = w<sub>i</sub> quote<sub>i</sub> + (1 - w<sub>i</sub>) ref<sub>i</sub>
+                  </code>
+                  <span>robust Yes price per bracket</span>
+                </div>
+                <div className="equationLine">
+                  <code>
+                    p<sub>i</sub> = normalize(q<sub>i</sub>) across both strike pages
+                  </code>
+                  <span>blended probability for each cap range</span>
+                </div>
+                <div className="equationLine liveEquation">
+                  <code>
+                    E[M] = &Sigma; p<sub>i</sub> midpoint<sub>i</sub> = {formatCompactUsd(expectedCap)}
+                  </code>
+                  <span>expected first-day closing market cap</span>
+                </div>
+                <div className="equationLine liveEquation">
+                  <code>
+                    P<sub>CBRS close</sub> = E[M] / S = {formatCompactUsd(expectedCap)} /{" "}
+                    {new Intl.NumberFormat("en-US").format(OFFICIAL_POST_OFFERING_SHARES)} = {formatUsd(polymarketSharePrice)}
+                  </code>
+                  <span>official post-offering shares drive the headline price</span>
+                </div>
+              </div>
+              <div className="formulaVars">
+                <div>
+                  <span>Probability mass</span>
+                  <strong>{formatPercent(probabilityTotal)}</strong>
+                  <small>Sum of blended bracket probabilities</small>
+                </div>
+                <div>
+                  <span>Top bracket</span>
+                  <strong>{topProbabilityRow ? topProbabilityRow.label : "n/a"}</strong>
+                  <small>{topProbabilityRow ? `${formatPercent(topProbabilityRow.probability)} at ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}` : "Waiting for markets"}</small>
+                </div>
+                <div>
+                  <span>Quote weight</span>
+                  <strong>{formatPercent(weightedQuoteWeight)}</strong>
+                  <small>Probability-weighted live quote influence</small>
+                </div>
+                <div>
+                  <span>Anchor split</span>
+                  <strong>
+                    {under50Anchor == null ? "n/a" : formatPercent(under50Anchor)} / {atLeast50Anchor == null ? "n/a" : formatPercent(atLeast50Anchor)}
+                  </strong>
+                  <small>Raw P(&lt;$50B) / P(at least $50B)</small>
+                </div>
+              </div>
+            </div>
           </div>
           <p className="caption">
             The definitive PM closing value is the expected first-day closing market cap from a robust live distribution, divided by the official

@@ -356,6 +356,131 @@ h1 {
   position: relative;
 }
 
+.formulaPanel {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.formulaHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border-bottom: 1px solid var(--line);
+}
+
+.formulaHeader div {
+  display: grid;
+  gap: 3px;
+}
+
+.formulaHeader span,
+.formulaVars span {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.formulaHeader strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.formulaHeader em {
+  color: #5d6674;
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.formulaGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
+}
+
+.equationStack {
+  display: grid;
+  border-right: 1px solid var(--line);
+}
+
+.equationLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.equationLine:last-child {
+  border-bottom: 0;
+}
+
+.equationLine code {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
+}
+
+.equationLine span {
+  color: #5d6674;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.liveEquation {
+  background: #f7f3ea;
+}
+
+.liveEquation code {
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.formulaVars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.formulaVars div {
+  display: grid;
+  gap: 4px;
+  min-height: 78px;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.formulaVars div:nth-child(2n) {
+  border-right: 0;
+}
+
+.formulaVars div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.formulaVars strong {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.formulaVars small {
+  color: #5d6674;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
 .barRow {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr) 168px 68px;
@@ -1364,6 +1489,15 @@ tbody tr:hover {
   .pmQualityRow {
     grid-template-columns: 74px 54px 132px repeat(4, minmax(92px, 1fr));
   }
+
+  .formulaGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .equationStack {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
 }
 
 @media (max-width: 760px) {
@@ -1415,6 +1549,35 @@ tbody tr:hover {
   .barRow {
     grid-template-columns: 76px minmax(0, 1fr) 118px 54px;
     gap: 8px;
+  }
+
+  .formulaHeader,
+  .equationLine {
+    grid-template-columns: 1fr;
+  }
+
+  .formulaHeader {
+    display: grid;
+  }
+
+  .formulaHeader em,
+  .equationLine span {
+    text-align: left;
+  }
+
+  .formulaVars {
+    grid-template-columns: 1fr;
+  }
+
+  .formulaVars div,
+  .formulaVars div:nth-child(2n),
+  .formulaVars div:nth-last-child(-n + 2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .formulaVars div:last-child {
+    border-bottom: 0;
   }
 
   .strikePopover {
