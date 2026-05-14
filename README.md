@@ -15,8 +15,8 @@ The goal is to translate Polymarket's expected first-day closing market capitali
 - Central Polymarket-implied closing value ranges
 - Live Hyperliquid `xyz:CBRS` price
 - Hyperliquid premium/discount versus Polymarket
-- Hyperliquid order-book depth
-- Polymarket bracket-level depth, volume, and liquidity
+- Hyperliquid order-book depth, spread, 24h volume, open interest, and funding
+- Polymarket total volume, 24h volume, bracket-level depth, and liquidity
 - IPO terms and official filing context
 
 ## Methodology
@@ -34,7 +34,7 @@ The definitive CBRS value is:
 E[Polymarket closing market cap] / official post-offering shares
 ```
 
-The current official post-offering share count used by the app is `215,228,541`, based on `30.0m` offered Class A shares plus `185.228541m` Class B shares from the latest checked S-1/A context. Alternate official share-count views are shown only as methodology audit rows; they do not drive the headline comparison.
+The current official post-offering share count used by the app is `215,228,541`, based on `30.0m` offered Class A shares plus `185.228541m` Class B shares from the latest checked S-1/A context. The `30.0m` offered shares are also shown separately as the base day-one public float, equal to about `13.9%` of post-offering shares before any underwriter option exercise. If the 4.5m-share option is fully exercised, option-adjusted IPO float is `34.5m` shares, or about `15.7%` of option-adjusted post-offering shares. Alternate official share-count views are shown only as methodology audit rows; they do not drive the headline comparison.
 
 For the chart, historical Polymarket-implied CBRS values are reconstructed from public CLOB Yes-token price history for every required bracket and `$50B` anchor market. The app uses the highest-density accepted public history shape currently observed for this endpoint: 14 days at 5-minute fidelity. A historical point is emitted only after all required Yes tokens have historical coverage; current live prices are not backfilled into old points.
 
@@ -43,6 +43,14 @@ Chart controls select candle interval, not the visible date range. Hyperliquid c
 Hyperliquid `candleSnapshot` only exposes the most recent 5000 candles for a given interval, so the app requests native candles per interval. For `xyz:CBRS`, `1m` history is shorter than `5m`, `15m`, or `1h` history; coarser intervals currently reach the earliest returned May 1 candles. Polymarket chart history is shorter because the CLOB price-history endpoint rejects longer high-density windows; the app keeps the two sources separate.
 
 The app also summarizes the Polymarket resolution rules: the markets resolve on Cerebras' market capitalization at the official first-day closing price, using official company filings/disclosures for share count and the primary exchange official listing page for closing price. Exact boundary values resolve to the higher bracket, and if no IPO occurs by June 30, 2026 at 11:59 PM ET, the no-IPO-before-July market resolves Yes.
+
+Every displayed market-cap bracket also shows its exact implied first-day closing CBRS price range under the current official denominator:
+
+```text
+bracket market-cap boundary / 215,228,541 post-offering shares
+```
+
+Those bracket price ranges are deterministic filing-based mappings, not extra model output.
 
 ## Live Data Behavior
 

@@ -103,6 +103,7 @@ type HyperQuality = {
   dayVolume: number | null;
   dayBaseVolume: number | null;
   openInterest: number | null;
+  fundingRate: number | null;
   markPrice: number | null;
   oraclePrice: number | null;
   prevDayPrice: number | null;
@@ -202,7 +203,7 @@ const SHARE_BASES: ShareBasis[] = [
     id: "official-basic",
     label: "Official post-offering",
     shares: OFFICIAL_POST_OFFERING_SHARES,
-    note: "30.0m Class A offered + 185.228541m Class B, latest S-1/A filed May 11, 2026."
+    note: "30.0m Class A offered + 185.228541m Class B, per the May 11 S-1/A post-offering table."
   },
   {
     id: "official-overallotment",
@@ -222,6 +223,7 @@ const emptyHyperQuality = (): HyperQuality => ({
   dayVolume: null,
   dayBaseVolume: null,
   openInterest: null,
+  fundingRate: null,
   markPrice: null,
   oraclePrice: null,
   prevDayPrice: null,
@@ -267,10 +269,28 @@ const formatMaybeCompactUsd = (value: number | null | undefined) =>
 const formatMaybePercent = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "n/a" : formatPercent(value);
 
+const formatMaybeFundingRate = (value: number | null | undefined) =>
+  value == null || !Number.isFinite(value)
+    ? "n/a"
+    : new Intl.NumberFormat("en-US", {
+        style: "percent",
+        maximumFractionDigits: 4,
+        minimumFractionDigits: 4
+      }).format(value);
+
 const formatMaybeNumber = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
     ? "n/a"
     : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+
+const formatImpliedPriceRange = (low: number | null, high: number | null) => {
+  const lowPrice = low == null ? null : low / OFFICIAL_POST_OFFERING_SHARES;
+  const highPrice = high == null ? null : high / OFFICIAL_POST_OFFERING_SHARES;
+  if (lowPrice == null && highPrice != null) return `<${formatUsd(highPrice, 2)}`;
+  if (lowPrice != null && highPrice == null) return `>=${formatUsd(lowPrice, 2)}`;
+  if (lowPrice != null && highPrice != null) return `${formatUsd(lowPrice, 2)}-${formatUsd(highPrice, 2)}`;
+  return "n/a";
+};
 
 const formatLocalTime = (value: number | Date) =>
   new Intl.DateTimeFormat(undefined, {
@@ -630,6 +650,7 @@ async function fetchHyperQuality() {
     dayVolume: toNumber(ctx.dayNtlVlm),
     dayBaseVolume: toNumber(ctx.dayBaseVlm),
     openInterest: toNumber(ctx.openInterest),
+    fundingRate: toNumber(ctx.funding),
     markPrice: toNumber(ctx.markPx),
     oraclePrice: toNumber(ctx.oraclePx),
     prevDayPrice: toNumber(ctx.prevDayPx),
@@ -978,6 +999,10 @@ function StrikePopover({
             {row.bid == null ? "n/a" : formatPercent(row.bid)} / {row.ask == null ? "n/a" : formatPercent(row.ask)}
           </strong>
         </div>
+        <div>
+          <span>Implied close</span>
+          <strong>{formatImpliedPriceRange(row.low, row.high)}</strong>
+        </div>
       </div>
 
       <div className="depthImbalance">
@@ -1254,6 +1279,7 @@ function App() {
   const capP90 = distributionQuantile(distribution, 0.9);
   const allBrackets = [...lower, ...upper];
   const pmVolume24h = allBrackets.reduce((sum, row) => sum + row.volume24h, 0);
+  const pmVolumeTotal = allBrackets.reduce((sum, row) => sum + row.volumeTotal, 0);
   const pmLiquidity = allBrackets.reduce((sum, row) => sum + row.liquidity, 0);
   const qualityRows = distribution.map((row) => {
     const depth = data.polymarketDepth[row.tokenId];
@@ -1296,6 +1322,7 @@ function App() {
   const grossProceeds = IPO_OFFER_PRICE * IPO_OFFERED_SHARES;
   const grossProceedsWithOption = IPO_OFFER_PRICE * (IPO_OFFERED_SHARES + IPO_OVERALLOTMENT_SHARES);
   const offeredFloatPct = IPO_OFFERED_SHARES / OFFICIAL_POST_OFFERING_SHARES;
+  const offeredFloatWithOptionPct = (IPO_OFFERED_SHARES + IPO_OVERALLOTMENT_SHARES) / OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES;
   const maxProbability = Math.max(...distribution.map((row) => row.probability), 0.01);
   const bookRowCount = Math.max(hyperBidLevels.length, hyperAskLevels.length);
   const noIpoPrice =
@@ -1428,6 +1455,12 @@ function App() {
           detail={`${formatMaybeCompactUsd(pmLiquidity)} combined CLOB liquidity`}
         />
         <MetricCard
+          icon={<BarChart3 size={22} />}
+          label="PM total volume"
+          value={formatMaybeCompactUsd(pmVolumeTotal)}
+          detail="Combined lifetime volume across both event pages"
+        />
+        <MetricCard
           icon={<CircleDollarSign size={22} />}
           label="HL 24h notional"
           value={formatMaybeCompactUsd(data.hyperQuality?.dayVolume)}
@@ -1497,6 +1530,7 @@ function App() {
                   <div className="barTrack">
                     <div className="barFill" style={{ width: `${Math.max((row.probability / maxProbability) * 100, 2)}%` }} />
                   </div>
+                  <div className="barPrice">{formatImpliedPriceRange(row.low, row.high)}</div>
                   <div className="barValue">{formatPercent(row.probability)}</div>
                   <StrikePopover row={row} maxDepth={maxQualityDepth} maxVolume={maxQualityVolume} maxLiquidity={maxQualityLiquidity} />
                 </div>
@@ -1539,9 +1573,29 @@ function App() {
             <small>Prev day {formatMaybeUsd(data.hyperQuality?.prevDayPrice)}</small>
           </div>
           <div>
+            <span>Hyperliquid 24h volume</span>
+            <strong>{formatMaybeCompactUsd(data.hyperQuality?.dayVolume)}</strong>
+            <small>{formatMaybeNumber(data.hyperQuality?.dayBaseVolume)} CBRS base volume</small>
+          </div>
+          <div>
+            <span>Hyperliquid open interest</span>
+            <strong>{formatMaybeNumber(data.hyperQuality?.openInterest)}</strong>
+            <small>Contracts from Hyperliquid asset context</small>
+          </div>
+          <div>
+            <span>Hyperliquid funding</span>
+            <strong>{formatMaybeFundingRate(data.hyperQuality?.fundingRate)}</strong>
+            <small>Current funding field from Hyperliquid asset context</small>
+          </div>
+          <div>
             <span>Polymarket combined 24h</span>
             <strong>{formatMaybeCompactUsd(pmVolume24h)}</strong>
             <small>Both linked event pages, bracket markets only</small>
+          </div>
+          <div>
+            <span>Polymarket total volume</span>
+            <strong>{formatMaybeCompactUsd(pmVolumeTotal)}</strong>
+            <small>Lifetime event volume from CLOB/Gamma fields, bracket markets only</small>
           </div>
           <div>
             <span>Polymarket displayed liquidity</span>
@@ -1599,6 +1653,7 @@ function App() {
               <div className="pmQualityHead">
                 <span>Bracket</span>
                 <span>Prob</span>
+                <span>Implied close</span>
                 <span>2c depth</span>
                 <span>24h</span>
                 <span>Liquidity</span>
@@ -1607,6 +1662,7 @@ function App() {
                 <div className="pmQualityRow" key={`quality-${row.id}`}>
                   <strong>{row.label}</strong>
                   <span>{formatPercent(row.probability)}</span>
+                  <span>{formatImpliedPriceRange(row.low, row.high)}</span>
                   <MeasureCell value={row.depthTotal} max={maxQualityDepth} tone="gold" />
                   <MeasureCell value={row.volume24h} max={maxQualityVolume} tone="green" />
                   <MeasureCell value={row.liquidity} max={maxQualityLiquidity} tone="red" />
@@ -1629,21 +1685,23 @@ function App() {
             <p>IPO Terms</p>
             <h2>Official pricing details and price-action context</h2>
           </div>
-          <span>Checked May 13, 2026 PDT</span>
+          <span>Checked May 14, 2026</span>
         </div>
         <div className="detailGrid">
-          <DetailItem label="Offer price" value={formatUsd(IPO_OFFER_PRICE)} note="Priced May 13; Nasdaq trading expected May 14 under CBRS." />
-          <DetailItem label="Shares offered" value="30.0m" note="Class A common stock; 4.5m underwriter option for 30 days." />
-          <DetailItem label="Gross proceeds" value={formatCompactUsd(grossProceeds)} note={`${formatCompactUsd(grossProceedsWithOption)} if the option is fully exercised.`} />
-          <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`${formatCompactUsd(officialIpoCapWithOption)} with over-allotment share count.`} />
-          <DetailItem label="Offered float" value={formatPercent(offeredFloatPct)} note="Offered shares divided by post-offering shares before over-allotment." />
+          <DetailItem label="Offer price" value={formatUsd(IPO_OFFER_PRICE)} note="Official pricing release dated May 13; Nasdaq trading expected May 14 under CBRS." />
+          <DetailItem label="Base IPO float" value="30.0m" note="Class A shares sold in the IPO; this is the day-one public float before any underwriter option exercise." />
+          <DetailItem label="Option-adjusted float" value="34.5m" note={`If the 4.5m underwriter option is fully exercised, float becomes ${formatPercent(offeredFloatWithOptionPct)} of option-adjusted post-offering shares.`} />
+          <DetailItem label="Gross proceeds" value={formatCompactUsd(grossProceeds)} note={`Before discounts/expenses; ${formatCompactUsd(grossProceedsWithOption)} if the option is fully exercised.`} />
+          <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`Uses 215.228541m post-offering shares; ${formatCompactUsd(officialIpoCapWithOption)} with over-allotment.`} />
+          <DetailItem label="Base float percent" value={formatPercent(offeredFloatPct)} note="30.0m IPO shares divided by 215.228541m post-offering shares; this is separate from the market-cap denominator." />
+          <DetailItem label="Non-float context" value="185.2m Class B" note="Class B holders retain most economic ownership and about 99.2% of voting power; lock-up and market-standoff restrictions apply with exceptions." />
           <DetailItem label="PM closing vs offer" value={`${offerToPm >= 0 ? "+" : ""}${formatUsd(offerToPm)}`} note={`${offerToPm >= 0 ? "+" : ""}${formatPercent(offerToPm / IPO_OFFER_PRICE)} versus $185.`} />
           <DetailItem
             label="Hyperliquid vs offer"
             value={offerToHl == null ? "Loading" : `${offerToHl >= 0 ? "+" : ""}${formatUsd(offerToHl)}`}
             note={offerToHl == null ? "Waiting for xyz:CBRS." : `${offerToHl >= 0 ? "+" : ""}${formatPercent(offerToHl / IPO_OFFER_PRICE)} versus $185.`}
           />
-          <DetailItem label="Lead banks" value="MS, Citi, Barclays, UBS" note="Mizuho and TD Cowen bookrunners; additional co-managers." />
+          <DetailItem label="Lead banks" value="Morgan Stanley, Citi, Barclays, UBS" note="Mizuho and TD Cowen bookrunners; Needham, Craig-Hallum, Wedbush, Rosenblatt, Academy, Credit Agricole CIB, MUFG, and First Citizens Capital Securities co-managers." />
         </div>
         <div className="watchList">
           <strong>Price-action notes</strong>
@@ -1652,8 +1710,8 @@ function App() {
             value is {formatCompactUsd(expectedCap)}. The S-1/A says Class B holders retain about 85.3% of shares and 99.2% of voting power after the
             offering, and lock-up/market-standoff restrictions generally run until the earlier of the second trading day after Q3 2026 earnings or 180 days
             after the prospectus date, with exceptions including some sell-to-cover activity. The S-1/A also highlights 2025 revenue of $510.0m, up 76%
-            year over year, a multi-year OpenAI deal valued at more than $20B for 750MW, and a binding AWS term sheet. No final 424B4 was visible in the SEC
-            feed during the latest check.
+            year over year, a multi-year OpenAI deal valued at more than $20B for 750 megawatts, and an AWS term sheet with binding provisions. The latest
+            SEC/issuer filing pages checked still showed the May 11 S-1/A and 8-A, with no final 424B4 listed yet.
           </span>
         </div>
         <div className="marketRules">
