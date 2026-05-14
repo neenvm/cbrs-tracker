@@ -2286,7 +2286,7 @@ function App() {
             <div className="depthHeader">
               <strong>Trade feed</strong>
               <span>
-                Scrollable tape · large prints {">= "}{formatCompactUsd(largeTradeCutoff)} · biggest {largestTrade ? formatCompactUsd(largestTrade.notional) : "n/a"}
+                Scrollable tape · large prints at least {formatCompactUsd(largeTradeCutoff)} · biggest {largestTrade ? formatCompactUsd(largestTrade.notional) : "n/a"}
               </span>
             </div>
             <div className="tradeRows">
