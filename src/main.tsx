@@ -164,6 +164,8 @@ type HyperQuality = {
   bookTime: number | null;
 };
 
+type PriceConfidence = "high" | "medium" | "low";
+
 type MarketBracket = {
   id: string;
   conditionId: string;
@@ -172,6 +174,11 @@ type MarketBracket = {
   high: number | null;
   midpoint: number;
   yesPrice: number;
+  quoteMidpoint: number | null;
+  referencePrice: number | null;
+  quoteWeight: number;
+  priceBasis: string;
+  priceConfidence: PriceConfidence;
   source: "Lower strikes" | "Upper strikes";
   tokenId: string;
   bid: number | null;
@@ -460,6 +467,76 @@ const boundsFor = (row: Pick<MarketBracket, "low" | "high">) => {
   return { low: 0, high: 0 };
 };
 
+const clamp = (value: number, low = 0, high = 1) => Math.min(Math.max(value, low), high);
+
+const finiteOrNull = (value: number | null | undefined) => (value != null && Number.isFinite(value) ? value : null);
+
+const deriveRobustYesPrice = ({
+  quoteMidpoint,
+  bestBid,
+  bestAsk,
+  last,
+  gammaPrice,
+  nearTouchDepth
+}: {
+  quoteMidpoint: number | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+  last: number | null;
+  gammaPrice: number | null;
+  nearTouchDepth: number;
+}): {
+  yesPrice: number;
+  quoteMidpoint: number | null;
+  referencePrice: number | null;
+  quoteWeight: number;
+  priceBasis: string;
+  priceConfidence: PriceConfidence;
+} => {
+  const quote = finiteOrNull(quoteMidpoint);
+  const reference = finiteOrNull(last) ?? finiteOrNull(gammaPrice);
+  const spread = bestBid != null && bestAsk != null ? bestAsk - bestBid : null;
+
+  if (quote == null) {
+    return {
+      yesPrice: clamp(reference ?? 0),
+      quoteMidpoint: null,
+      referencePrice: reference,
+      quoteWeight: 0,
+      priceBasis: "last trade / Gamma fallback",
+      priceConfidence: "low" as const
+    };
+  }
+
+  if (reference == null) {
+    const confidence: PriceConfidence = spread != null && spread <= 0.04 && nearTouchDepth >= 100 ? "medium" : "low";
+    return {
+      yesPrice: clamp(quote),
+      quoteMidpoint: quote,
+      referencePrice: null,
+      quoteWeight: 1,
+      priceBasis: "quote only",
+      priceConfidence: confidence
+    };
+  }
+
+  const spreadScore = spread == null ? 0.45 : clamp((0.1 - spread) / 0.08);
+  const depthScore = clamp(Math.log10(1 + nearTouchDepth) / Math.log10(501));
+  const divergencePenalty = clamp(Math.abs(quote - reference) / 0.08);
+  const quoteWeight = clamp(0.18 + spreadScore * 0.42 + depthScore * 0.3 - divergencePenalty * 0.2, 0.2, 0.85);
+  const yesPrice = clamp(quote * quoteWeight + reference * (1 - quoteWeight));
+  const priceConfidence: PriceConfidence = quoteWeight >= 0.68 && nearTouchDepth >= 75 ? "high" : quoteWeight >= 0.42 ? "medium" : "low";
+
+  return {
+    yesPrice,
+    quoteMidpoint: quote,
+    referencePrice: reference,
+    quoteWeight,
+    priceBasis: "robust quote/trade blend",
+    priceConfidence
+  };
+};
+
 const marketToBracket = (
   market: PolymarketMarket,
   source: MarketBracket["source"],
@@ -474,22 +551,36 @@ const marketToBracket = (
   const tokens = parseJsonArray<string>(market.clobTokenIds);
   const yesIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
   const tokenId = tokens[yesIndex] ?? "";
-  const yesPrice = midpoints[tokenId] ?? prices[yesIndex] ?? 0;
   const bookDepth = depth[tokenId];
-	  return {
-	    id: `${source}-${market.slug}`,
-	    conditionId: market.conditionId,
-	    label: labelFor(parsed.low, parsed.high),
+  const bid = bookDepth?.bestBid ?? market.bestBid;
+  const ask = bookDepth?.bestAsk ?? market.bestAsk;
+  const quoteMidpoint = finiteOrNull(midpoints[tokenId]) ?? (bid != null && ask != null ? (bid + ask) / 2 : null);
+  const robustPrice = deriveRobustYesPrice({
+    quoteMidpoint,
+    bestBid: bid,
+    bestAsk: ask,
+    last: market.lastTradePrice,
+    gammaPrice: prices[yesIndex],
+    nearTouchDepth: (bookDepth?.bidDepth2c ?? 0) + (bookDepth?.askDepth2c ?? 0)
+  });
+  return {
+    id: `${source}-${market.slug}`,
+    conditionId: market.conditionId,
+    label: labelFor(parsed.low, parsed.high),
     low: parsed.low,
     high: parsed.high,
     midpoint: midpointFor(parsed.low, parsed.high),
-    yesPrice,
+    yesPrice: robustPrice.yesPrice,
+    quoteMidpoint: robustPrice.quoteMidpoint,
+    referencePrice: robustPrice.referencePrice,
+    quoteWeight: robustPrice.quoteWeight,
+    priceBasis: robustPrice.priceBasis,
+    priceConfidence: robustPrice.priceConfidence,
     source,
     tokenId,
-    bid: bookDepth?.bestBid ?? market.bestBid,
-    ask: bookDepth?.bestAsk ?? market.bestAsk,
-    last: market.lastTradePrice
-    ,
+    bid,
+    ask,
+    last: market.lastTradePrice,
     volume24h: Number(market.volume24hrClob ?? market.volume24hr ?? 0),
     volumeTotal: Number(market.volumeClob ?? market.volumeNum ?? 0),
     liquidity: Number(market.liquidityClob ?? market.liquidityNum ?? 0)
@@ -1029,17 +1120,30 @@ function useDashboardData() {
 	              if (relevantChanges.length) {
 	                setState((current) => {
 	                  const midpointUpdates: Record<string, number> = {};
+	                  const depthUpdates: Record<string, PolymarketDepth> = {};
 	                  const quoteChanges: PolymarketQuoteChange[] = [];
 	                  relevantChanges.forEach((change) => {
 	                    const ref = refByToken.get(change.asset_id);
-	                    const bid = Number(change.best_bid);
-	                    const ask = Number(change.best_ask);
-	                    const price = Number(change.price);
-	                    const midpoint = Number.isFinite(bid) && Number.isFinite(ask) && ask > 0 ? (bid + ask) / 2 : price;
-	                    if (!ref || !Number.isFinite(midpoint)) return;
+	                    const bid = toNumber(change.best_bid);
+	                    const ask = toNumber(change.best_ask);
+	                    const price = toNumber(change.price);
+	                    const midpoint = bid != null && ask != null && ask > 0 ? (bid + ask) / 2 : price;
+	                    if (!ref || midpoint == null || !Number.isFinite(midpoint)) return;
 	                    const previousMidpoint = current.polymarketMidpoints[change.asset_id];
 	                    const delta = Number.isFinite(previousMidpoint) ? midpoint - previousMidpoint : null;
 	                    midpointUpdates[change.asset_id] = midpoint;
+	                    if (bid != null || ask != null) {
+	                      const existingDepth = current.polymarketDepth[change.asset_id];
+	                      depthUpdates[change.asset_id] = {
+	                        bidDepth2c: existingDepth?.bidDepth2c ?? 0,
+	                        askDepth2c: existingDepth?.askDepth2c ?? 0,
+	                        bestBid: bid ?? existingDepth?.bestBid ?? null,
+	                        bestAsk: ask ?? existingDepth?.bestAsk ?? null,
+	                        spread: bid != null && ask != null ? ask - bid : existingDepth?.spread ?? null,
+	                        bidLevels: existingDepth?.bidLevels ?? [],
+	                        askLevels: existingDepth?.askLevels ?? []
+	                      };
+	                    }
 	                    if (delta == null || Math.abs(delta) >= 0.0005) {
 	                      quoteChanges.push({
 	                        asset: change.asset_id,
@@ -1049,8 +1153,8 @@ function useDashboardData() {
 	                        bracketTitle: ref.title,
 	                        slug: ref.slug,
 	                        eventSlug: ref.eventSlug,
-	                        bestBid: Number.isFinite(bid) ? bid : null,
-	                        bestAsk: Number.isFinite(ask) ? ask : null,
+	                        bestBid: bid,
+	                        bestAsk: ask,
 	                        midpoint,
 	                        previousMidpoint: Number.isFinite(previousMidpoint) ? previousMidpoint : null,
 	                        delta,
@@ -1062,6 +1166,7 @@ function useDashboardData() {
 	                  return {
 	                    ...current,
 	                    polymarketMidpoints: { ...current.polymarketMidpoints, ...midpointUpdates },
+	                    polymarketDepth: Object.keys(depthUpdates).length ? { ...current.polymarketDepth, ...depthUpdates } : current.polymarketDepth,
 	                    polymarketQuoteChanges: quoteChanges.length
 	                      ? mergePolymarketQuoteChanges(current.polymarketQuoteChanges, quoteChanges)
 	                      : current.polymarketQuoteChanges,
@@ -1420,6 +1525,8 @@ const summarizeTradePressure = (trades: AnnotatedTrade[]) => {
   });
   return [...byBracket.values()].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
 };
+
+const pressureShare = (value: number, total: number) => `${Math.max(4, total > 0 ? (value / total) * 100 : 0).toFixed(1)}%`;
 
 type AnnotatedQuoteChange = PolymarketQuoteChange & {
   bracketLabel: string;
@@ -1815,7 +1922,7 @@ function App() {
           value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
           detail={
             expectedCap
-              ? `${formatVsIpo(polymarketSharePrice)}; live quote midpoint, not last trade`
+              ? `${formatVsIpo(polymarketSharePrice)}; robust quote/trade blend`
               : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
           }
         />
@@ -1902,6 +2009,13 @@ function App() {
             ))}
           </div>
           <div className="sourceBox">
+            <strong>PM price treatment</strong>
+            <span>
+              The headline uses a robust quote/trade blend: tight, deep books follow the live midpoint; shallow, wide, or trade-divergent quotes are damped
+              toward the latest trade/Gamma price to reduce spoof risk.
+            </span>
+          </div>
+          <div className="sourceBox">
             <strong>trade[XYZ] treatment</strong>
             <span>IPOP price is a cash-settled per-share derivative. Their displayed FD share count is indicative only, so it is not used as a default.</span>
           </div>
@@ -1942,8 +2056,10 @@ function App() {
             })}
           </div>
           <p className="caption">
-            The definitive PM closing value is the expected first-day closing market cap from this live blended distribution, divided by the official
-            post-offering share count. Historical PM chart points are reconstructed from the highest-density accepted public CLOB Yes-token history (
+            The definitive PM closing value is the expected first-day closing market cap from a robust live distribution, divided by the official
+            post-offering share count. Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
+            the latest trade/Gamma price so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart points are reconstructed from the
+            highest-density accepted public CLOB Yes-token history (
             {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no
             current prices are backfilled into historical points. The value range assumes outcomes are uniformly distributed inside each bracket; the
             open-ended {">= $100B"} bracket is capped at $110B for quantile math.
@@ -2106,22 +2222,34 @@ function App() {
         <div className="tradeMonitorGrid">
           <div className="tradePressure">
             <div className="depthHeader">
-              <strong>15m pressure by bracket</strong>
-              <span>Yes-up minus Yes-down notional</span>
+              <strong>15m net flow by bracket</strong>
+              <span>Green buys push that bracket higher; red sells push it lower</span>
             </div>
-            <div className="pressureRows">
-              {tradePressureRows.slice(0, 6).map((row) => (
-                <div className="pressureRow" key={`pressure-${row.label}`}>
-                  <div>
-                    <strong>{row.label}</strong>
-                    <span>{row.impliedPriceRange}</span>
+            <div className="pressureRows" aria-label="Polymarket net flow by bracket">
+              {tradePressureRows.slice(0, 6).map((row) => {
+                const totalFlow = row.up + row.down;
+                return (
+                  <div className={`pressureRow ${row.net >= 0 ? "up" : "down"}`} key={`pressure-${row.label}`}>
+                    <div className="pressureTopline">
+                      <div>
+                        <strong>{row.label}</strong>
+                        <span>{row.impliedPriceRange}</span>
+                      </div>
+                      <div className="pressureNet">
+                        <b className={row.net >= 0 ? "upText" : "downText"}>{formatSignedCompactUsd(row.net)}</b>
+                        <small>{row.net >= 0 ? "net buying pressure" : "net selling pressure"}</small>
+                      </div>
+                    </div>
+                    <div className="flowSplit" aria-hidden="true">
+                      <span className="buyFlow" style={{ width: pressureShare(row.up, totalFlow) }} />
+                      <span className="sellFlow" style={{ width: pressureShare(row.down, totalFlow) }} />
+                    </div>
+                    <small>
+                      Buying pressure {formatCompactUsd(row.up)} · selling pressure {formatCompactUsd(row.down)} · {row.count} trade{row.count === 1 ? "" : "s"}
+                    </small>
                   </div>
-                  <b className={row.net >= 0 ? "upText" : "downText"}>{formatSignedCompactUsd(row.net)}</b>
-                  <small>
-                    Up {formatCompactUsd(row.up)} · Down {formatCompactUsd(row.down)}
-                  </small>
-                </div>
-              ))}
+                );
+              })}
               {tradePressureRows.length === 0 ? <p className="emptyState">No recent Polymarket trades returned yet.</p> : null}
             </div>
           </div>
@@ -2158,30 +2286,37 @@ function App() {
             <div className="depthHeader">
               <strong>Trade feed</strong>
               <span>
-                Large trade cutoff {formatCompactUsd(largeTradeCutoff)} · biggest {largestTrade ? formatCompactUsd(largestTrade.notional) : "n/a"}
+                Scrollable tape · large prints {">= "}{formatCompactUsd(largeTradeCutoff)} · biggest {largestTrade ? formatCompactUsd(largestTrade.notional) : "n/a"}
               </span>
             </div>
             <div className="tradeRows">
               {annotatedTrades.slice(0, 30).map((trade) => {
                 const isLarge = trade.notional >= largeTradeCutoff;
+                const isLargest = largestTrade === trade;
                 const txHref = trade.transactionHash ? `https://polygonscan.com/tx/${trade.transactionHash}` : null;
                 return (
-                  <div className={`tradeRow ${trade.yesDirection === "up" ? "up" : "down"} ${isLarge ? "large" : ""}`} key={`${trade.transactionHash}-${trade.asset}-${trade.timestamp}`}>
+                  <div
+                    className={`tradeRow ${trade.yesDirection === "up" ? "up" : "down"} ${isLarge ? "large" : ""} ${isLargest ? "largest" : ""}`}
+                    key={`${trade.transactionHash}-${trade.asset}-${trade.timestamp}`}
+                  >
                     <div className="tradeMain">
                       <span className="tradeTime">{formatLocalTime(trade.timestamp * 1000)}</span>
-                      <strong>{trade.bracketLabel}</strong>
+                      <strong>
+                        {trade.bracketLabel}
+                        {isLarge ? <i>{isLargest ? "BIGGEST" : "LARGE"}</i> : null}
+                      </strong>
                       <em>{trade.impliedPriceRange}</em>
                     </div>
                     <div className="tradeDetail">
-                      <b>{trade.yesDirection === "up" ? "Yes pressure up" : "Yes pressure down"}</b>
-	                      <span>
-	                        {trade.source === "clob" ? "Live CLOB" : "Wallet API"} · {trade.side} {trade.outcome} · {formatCompactUsd(trade.notional)} at{" "}
-	                        {formatPercent(trade.price)}
-	                      </span>
+                      <b>{trade.yesDirection === "up" ? "Buying pressure" : "Selling pressure"}</b>
+                      <span>
+                        {trade.source === "clob" ? "Live CLOB" : "Wallet API"} · {trade.side} {trade.outcome} · {formatCompactUsd(trade.notional)} at{" "}
+                        {formatPercent(trade.price)}
+                      </span>
                     </div>
                     <div className="tradeWallet">
                       <span>{trade.traderLabel}</span>
-	                      <small>{trade.source === "clob" ? "wallet pending" : shortAddress(trade.proxyWallet)}</small>
+                      <small>{trade.source === "clob" ? "wallet pending" : shortAddress(trade.proxyWallet)}</small>
                       {txHref ? (
                         <a href={txHref} target="_blank" rel="noreferrer">
                           tx
@@ -2191,14 +2326,14 @@ function App() {
                   </div>
                 );
               })}
-	              {annotatedTrades.length === 0 ? <p className="emptyState">No trade feed data yet. CLOB websocket trades appear first; wallet attribution follows from the Data API poll.</p> : null}
+              {annotatedTrades.length === 0 ? <p className="emptyState">No trade feed data yet. CLOB websocket trades appear first; wallet attribution follows from the Data API poll.</p> : null}
             </div>
           </div>
         </div>
         <p className="caption">
-	          Direction is normalized to the Yes side: BUY Yes and SELL No push the bracket's Yes probability up; SELL Yes and BUY No push it down. Live CLOB
-	          trade events are fastest but do not include wallets; wallet-linked rows come from the Data API as soon as it updates.
-	        </p>
+          Buying pressure means BUY Yes or SELL No, which pushes that bracket's probability higher. Selling pressure means SELL Yes or BUY No, which pushes it lower.
+          Live CLOB trade events are fastest but do not include wallets; wallet-linked rows come from the Data API as soon as it updates.
+        </p>
       </section>
 
       <section className="panel ipoPanel">
@@ -2268,9 +2403,11 @@ function App() {
               <tr>
                 <th>Bracket</th>
                 <th>Source</th>
-                <th>Raw Yes</th>
+                <th>Robust Yes</th>
                 <th>Blended Prob.</th>
                 <th>Bid / Ask</th>
+                <th>Quote / Ref</th>
+                <th>Reliability</th>
                 <th>2c Depth</th>
                 <th>24h Vol.</th>
                 <th>Midpoint</th>
@@ -2285,6 +2422,12 @@ function App() {
                   <td>{formatPercent(row.probability)}</td>
                   <td>
                     {row.bid == null ? "n/a" : formatPercent(row.bid)} / {row.ask == null ? "n/a" : formatPercent(row.ask)}
+                  </td>
+                  <td>
+                    {row.quoteMidpoint == null ? "n/a" : formatPercent(row.quoteMidpoint)} / {row.referencePrice == null ? "n/a" : formatPercent(row.referencePrice)}
+                  </td>
+                  <td>
+                    {row.priceConfidence} · {formatPercent(row.quoteWeight)} quote · {row.priceBasis}
                   </td>
                   <td>{formatMaybeCompactUsd((data.polymarketDepth[row.tokenId]?.bidDepth2c ?? 0) + (data.polymarketDepth[row.tokenId]?.askDepth2c ?? 0))}</td>
                   <td>{formatMaybeCompactUsd(row.volume24h)}</td>

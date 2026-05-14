@@ -72,9 +72,9 @@ Polymarket:
 - Historical chart points come from the CLOB price-history endpoint.
 - Gamma volume/liquidity fields and wallet-attributed trades refresh every 5 seconds.
 
-The trade monitor normalizes trade direction to the Yes side. `BUY Yes` and `SELL No` count as upward pressure for a bracket; `SELL Yes` and `BUY No` count as downward pressure. This makes a Polymarket pump/dump easier to explain even when the raw trade happened on the No token. Live CLOB trades are fastest but do not include wallet/profile fields; wallet-linked attribution appears when the Data API updates.
+The trade monitor normalizes trade direction to the Yes side. `BUY Yes` and `SELL No` count as buying pressure for a bracket; `SELL Yes` and `BUY No` count as selling pressure. This makes a Polymarket pump/dump easier to explain even when the raw trade happened on the No token. Live CLOB trades are fastest but do not include wallet/profile fields; wallet-linked attribution appears when the Data API updates. The tape is scrollable and highlights large prints.
 
-The top Polymarket-implied CBRS value is quote-midpoint based, not last-trade-only. It can move when best bid/ask changes because an order is placed or cancelled, even if no matched trade appears. The live quote-change feed exists to explain those non-trade moves.
+The top Polymarket-implied CBRS value is a robust quote/trade blend, not a raw midpoint and not last-trade-only. Tight, deep books follow the live quote midpoint more closely. Wide, shallow, quote-only, or trade-divergent moves are damped toward the latest trade/Gamma price so thin top-of-book orders cannot fully drive the headline. The live quote-change feed exists to explain non-trade moves.
 
 The app uses no private API keys.
 
