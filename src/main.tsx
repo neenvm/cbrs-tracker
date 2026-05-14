@@ -1602,9 +1602,10 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
 
   React.useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
+    const container = containerRef.current;
     const chart = createChart(containerRef.current, {
-      autoSize: true,
-      height: 330,
+      width: container.clientWidth,
+      height: container.clientHeight,
       layout: {
         background: { type: ColorType.Solid, color: "#fbfaf7" },
         textColor: "#415064",
@@ -1678,7 +1679,16 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
     chartRef.current = chart;
     pmSeriesRef.current = pmSeries;
     hlSeriesRef.current = hlSeries;
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      const width = Math.floor(entry.contentRect.width);
+      const height = Math.floor(entry.contentRect.height);
+      if (width > 0 && height > 0) {
+        chart.applyOptions({ width, height });
+      }
+    });
+    resizeObserver.observe(container);
     return () => {
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
       pmSeriesRef.current = null;
@@ -2418,7 +2428,7 @@ function App() {
                 return (
                   <div
                     className={`tradeRow ${trade.yesDirection === "up" ? "up" : "down"} ${isLarge ? "large" : ""} ${isLargest ? "largest" : ""}`}
-                    key={`${trade.transactionHash}-${trade.asset}-${trade.timestamp}`}
+                    key={tradeKey(trade)}
                   >
                     <div className="tradeMain">
                       <span className="tradeTime">{formatLocalTime(trade.timestamp * 1000)}</span>
