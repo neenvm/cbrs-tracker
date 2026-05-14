@@ -212,8 +212,6 @@ type ShareBasis = {
 type PricePoint = {
   time: number;
   polymarket: number;
-  polymarketP05: number | null;
-  polymarketP95: number | null;
   hyperliquid: number | null;
 };
 
@@ -1022,7 +1020,7 @@ function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBr
   const timestamps = [...new Set(Object.values(normalizedHistories).flatMap((history) => history.map((point) => point.t)))].sort((a, b) => a - b);
   const latest = new Map<string, number>();
   const cursors = new Map<string, number>(tokenIds.map((tokenId) => [tokenId, 0]));
-  const points: Array<{ time: number; polymarket: number; polymarketP05: number; polymarketP95: number }> = [];
+  const points: Array<{ time: number; polymarket: number }> = [];
 
   timestamps.forEach((timestamp) => {
     tokenIds.forEach((tokenId) => {
@@ -1042,14 +1040,10 @@ function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBr
     const upperAtTime = upper.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId)! }));
     const distributionAtTime = buildDistribution(lowerAtTime, upperAtTime);
     const cap = expectedMarketCap(distributionAtTime);
-    const capP05 = distributionQuantile(distributionAtTime, 0.05);
-    const capP95 = distributionQuantile(distributionAtTime, 0.95);
     if (Number.isFinite(cap) && cap > 0) {
       points.push({
         time: timestamp * 1000,
-        polymarket: cap / OFFICIAL_POST_OFFERING_SHARES,
-        polymarketP05: capP05 / OFFICIAL_POST_OFFERING_SHARES,
-        polymarketP95: capP95 / OFFICIAL_POST_OFFERING_SHARES
+        polymarket: cap / OFFICIAL_POST_OFFERING_SHARES
       });
     }
   });
@@ -1627,7 +1621,7 @@ const annotateQuoteChanges = (quoteChanges: PolymarketQuoteChange[], brackets: M
 
 const aggregateLineData = (
   points: PricePoint[],
-  key: "polymarket" | "polymarketP05" | "polymarketP95" | "hyperliquid",
+  key: "polymarket" | "hyperliquid",
   intervalMs: number
 ): LineData<UTCTimestamp>[] => {
   const byTime = new Map<number, number>();
@@ -1652,8 +1646,6 @@ const aggregatePricePoints = (points: PricePoint[], intervalMs: number): PricePo
       byTime.set(bucket, {
         time: bucket,
         polymarket: point.polymarket,
-        polymarketP05: point.polymarketP05,
-        polymarketP95: point.polymarketP95,
         hyperliquid: point.hyperliquid
       });
     });
@@ -1689,8 +1681,6 @@ function PriceComparisonChart({
   const [interval, setInterval] = React.useState<ChartInterval>("15m");
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const [measurement, setMeasurement] = React.useState<ChartMeasurement | null>(null);
-  const [bandPath, setBandPath] = React.useState<string | null>(null);
-  const [bandTick, setBandTick] = React.useState(0);
   const selectedInterval = CHART_INTERVALS.find((item) => item.id === interval) ?? CHART_INTERVALS[1];
   const displayPoints = React.useMemo(() => aggregatePricePoints(points, selectedInterval.ms), [points, selectedInterval.ms]);
   const displayCandles = React.useMemo(() => candlesByInterval[interval] ?? [], [candlesByInterval, interval]);
@@ -1699,10 +1689,6 @@ function PriceComparisonChart({
       ? `HL ${selectedInterval.label} returned range: ${formatLocalDateTime(displayCandles[0].time)} - ${formatLocalDateTime(displayCandles.at(-1)!.time)}`
       : `HL ${selectedInterval.label} history unavailable`;
   const latest = displayPoints.at(-1);
-
-  const requestBandUpdate = React.useCallback(() => {
-    window.requestAnimationFrame(() => setBandTick((value) => value + 1));
-  }, []);
 
   const getMeasurementPoint = React.useCallback((event: PointerEvent) => {
     const container = containerRef.current;
@@ -1802,25 +1788,17 @@ function PriceComparisonChart({
       const height = Math.floor(entry.contentRect.height);
       if (width > 0 && height > 0) {
         chart.applyOptions({ width, height });
-        requestBandUpdate();
       }
     });
     resizeObserver.observe(container);
-    const visibleRangeHandler = () => requestBandUpdate();
-    const timeScale = chart.timeScale() as unknown as {
-      subscribeVisibleTimeRangeChange: (handler: () => void) => void;
-      unsubscribeVisibleTimeRangeChange: (handler: () => void) => void;
-    };
-    timeScale.subscribeVisibleTimeRangeChange(visibleRangeHandler);
     return () => {
       resizeObserver.disconnect();
-      timeScale.unsubscribeVisibleTimeRangeChange(visibleRangeHandler);
       chart.remove();
       chartRef.current = null;
       pmSeriesRef.current = null;
       hlSeriesRef.current = null;
     };
-  }, [requestBandUpdate]);
+  }, []);
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -1892,7 +1870,6 @@ function PriceComparisonChart({
     const candleData = toCandleData(displayCandles);
     pmSeriesRef.current?.setData(pmData);
     hlSeriesRef.current?.setData(candleData);
-    requestBandUpdate();
     const dataTimes = [...pmData.map((point) => Number(point.time)), ...candleData.map((candle) => Number(candle.time))];
     if (dataTimes.length === 0) return;
     const start = Math.min(...dataTimes);
@@ -1906,52 +1883,7 @@ function PriceComparisonChart({
       chartRef.current?.timeScale().fitContent();
     }
     lastAutoFitRef.current = { interval, start, end };
-  }, [points, displayCandles, interval, selectedInterval.ms, requestBandUpdate]);
-
-  React.useEffect(() => {
-    const chart = chartRef.current;
-    const series = pmSeriesRef.current;
-    if (!chart || !series) {
-      setBandPath(null);
-      return;
-    }
-    const bandPoints = displayPoints.filter(
-      (point) =>
-        point.polymarketP05 != null &&
-        point.polymarketP95 != null &&
-        Number.isFinite(point.polymarketP05) &&
-        Number.isFinite(point.polymarketP95)
-    );
-    if (bandPoints.length < 2) {
-      setBandPath(null);
-      return;
-    }
-    const upper: Array<{ x: number; y: number }> = [];
-    const lowerBand: Array<{ x: number; y: number }> = [];
-    bandPoints.forEach((point) => {
-      const time = Math.floor(point.time / 1000) as UTCTimestamp;
-      const x = chart.timeScale().timeToCoordinate(time);
-      const yUpper = series.priceToCoordinate(point.polymarketP95!);
-      const yLower = series.priceToCoordinate(point.polymarketP05!);
-      if (x == null || yUpper == null || yLower == null) return;
-      upper.push({ x, y: yUpper });
-      lowerBand.push({ x, y: yLower });
-    });
-    if (upper.length < 2 || lowerBand.length < 2) {
-      setBandPath(null);
-      return;
-    }
-    const path = [
-      `M ${upper[0].x.toFixed(2)} ${upper[0].y.toFixed(2)}`,
-      ...upper.slice(1).map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
-      ...lowerBand
-        .slice()
-        .reverse()
-        .map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
-      "Z"
-    ].join(" ");
-    setBandPath(path);
-  }, [displayPoints, bandTick]);
+  }, [points, displayCandles, interval, selectedInterval.ms]);
 
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
@@ -1994,12 +1926,6 @@ function PriceComparisonChart({
       </div>
       <div className="chartReadout">
         <span>
-          PM 90%{" "}
-          {latest?.polymarketP05 == null || latest.polymarketP95 == null
-            ? "n/a"
-            : `${formatUsd(latest.polymarketP05)}-${formatUsd(latest.polymarketP95)}`}
-        </span>
-        <span>
           Spread{" "}
           {readoutSpread == null
             ? "n/a"
@@ -2019,16 +1945,6 @@ function PriceComparisonChart({
         <span>{readout?.time ? formatChartAxisTime(readout.time * 1000) : "Waiting for data"}</span>
       </div>
       <div className="marketChart" ref={containerRef}>
-        {bandPath ? (
-          <svg
-            className="pmRangeBand"
-            viewBox={`0 0 ${containerRef.current?.clientWidth ?? 1} ${containerRef.current?.clientHeight ?? 1}`}
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <path d={bandPath} />
-          </svg>
-        ) : null}
         {measurement && measurementDelta != null ? (
           <div className="measureOverlay" aria-hidden="true">
             <div
@@ -2075,12 +1991,10 @@ function App() {
   const { lower, upper } = getBrackets(data.lowerEvent, data.upperEvent, data.polymarketMidpoints, data.polymarketDepth);
   const distribution = buildDistribution(lower, upper);
   const expectedCap = expectedMarketCap(distribution);
-  const capP05 = distributionQuantile(distribution, 0.05);
   const capP10 = distributionQuantile(distribution, 0.1);
   const capP25 = distributionQuantile(distribution, 0.25);
   const capP75 = distributionQuantile(distribution, 0.75);
   const capP90 = distributionQuantile(distribution, 0.9);
-  const capP95 = distributionQuantile(distribution, 0.95);
   const allBrackets = [...lower, ...upper];
   const pmBracketVolume24h = allBrackets.reduce((sum, row) => sum + row.volume24h, 0);
   const pmBracketVolumeTotal = allBrackets.reduce((sum, row) => sum + row.volumeTotal, 0);
@@ -2154,12 +2068,10 @@ function App() {
   const hyperAnnualizedFunding = annualizedHyperFunding(data.hyperQuality?.fundingRate);
   const selectedBasis = SHARE_BASES[0];
   const polymarketSharePrice = expectedCap / selectedBasis.shares;
-  const shareP05 = capP05 / selectedBasis.shares;
   const shareP10 = capP10 / selectedBasis.shares;
   const shareP25 = capP25 / selectedBasis.shares;
   const shareP75 = capP75 / selectedBasis.shares;
   const shareP90 = capP90 / selectedBasis.shares;
-  const shareP95 = capP95 / selectedBasis.shares;
   const spread = data.hyperPrice == null ? null : data.hyperPrice - polymarketSharePrice;
   const spreadPct = data.hyperPrice == null ? null : spread! / polymarketSharePrice;
   const offerToPm = polymarketSharePrice - IPO_OFFER_PRICE;
@@ -2236,14 +2148,14 @@ function App() {
     if (!Number.isFinite(polymarketSharePrice) || polymarketSharePrice <= 0) return;
     const now = Date.now();
     setPriceHistory((current) => {
-      const point = { time: now, polymarket: polymarketSharePrice, polymarketP05: shareP05, polymarketP95: shareP95, hyperliquid: data.hyperPrice };
+      const point = { time: now, polymarket: polymarketSharePrice, hyperliquid: data.hyperPrice };
       const previous = current.at(-1);
       if (previous && now - previous.time < 2200) {
         return [...current.slice(0, -1), point];
       }
       return [...current, point].slice(-90);
     });
-  }, [polymarketSharePrice, shareP05, shareP95, data.hyperPrice]);
+  }, [polymarketSharePrice, data.hyperPrice]);
   React.useEffect(() => {
     if (lower.length === 0 || upper.length === 0) return;
     let cancelled = false;
@@ -2338,12 +2250,6 @@ function App() {
               ? `${formatVsIpo(polymarketSharePrice)}; robust quote/trade blend`
               : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
           }
-        />
-        <MetricCard
-          icon={<Scale size={22} />}
-          label="PM implied 90% range"
-          value={expectedCap ? `${formatUsd(shareP05)}-${formatUsd(shareP95)}` : "Loading"}
-          detail="Central 90% distribution band, reconstructed historically on chart"
         />
         <MetricCard
           icon={<Scale size={22} />}
@@ -2625,9 +2531,9 @@ function App() {
             the latest trade/Gamma price so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart points are reconstructed from the
             highest-density accepted public CLOB Yes-token history (
             {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no
-            current prices are backfilled into historical points. The PM 90% chart band is the 5th-95th percentile range reconstructed at each timestamp.
-            Polymarket buckets are coarse: each $10B market-cap bracket is about {formatUsd(10e9 / OFFICIAL_POST_OFFERING_SHARES, 2)} wide per CBRS share.
-            Quantile math assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B.
+            current prices are backfilled into historical points. Polymarket buckets are coarse: each $10B market-cap bracket is about{" "}
+            {formatUsd(10e9 / OFFICIAL_POST_OFFERING_SHARES, 2)} wide per CBRS share. Quantile math assumes outcomes are uniformly distributed inside each
+            bracket; the open-ended {">= $100B"} bracket is capped at $110B.
           </p>
         </div>
       </section>
