@@ -209,6 +209,8 @@ type ChartMeasurement = {
   endY: number;
   startPrice: number;
   endPrice: number;
+  startTimeMs: number | null;
+  endTimeMs: number | null;
 };
 
 type ChartCandle = {
@@ -422,6 +424,17 @@ const chartTimeToMs = (time: Time | unknown) => {
     return new Date(businessDay.year, businessDay.month - 1, businessDay.day).getTime();
   }
   return NaN;
+};
+
+const formatDuration = (milliseconds: number | null | undefined) => {
+  if (milliseconds == null || !Number.isFinite(milliseconds)) return "n/a";
+  const absoluteMinutes = Math.round(Math.abs(milliseconds) / 60_000);
+  const days = Math.floor(absoluteMinutes / (24 * 60));
+  const hours = Math.floor((absoluteMinutes % (24 * 60)) / 60);
+  const minutes = absoluteMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 };
 
 const formatChartTick = (time: Time, tickMarkType: TickMarkType, locale: string) => {
@@ -1622,7 +1635,7 @@ function PriceComparisonChart({
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
   const hlSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastAutoFitRef = React.useRef<{ interval: ChartInterval | null; start: number | null; end: number | null }>({ interval: null, start: null, end: null });
-  const measurementStartRef = React.useRef<{ x: number; y: number; price: number } | null>(null);
+  const measurementStartRef = React.useRef<{ x: number; y: number; price: number; timeMs: number | null } | null>(null);
   const [interval, setInterval] = React.useState<ChartInterval>("15m");
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const [measurement, setMeasurement] = React.useState<ChartMeasurement | null>(null);
@@ -1638,13 +1651,15 @@ function PriceComparisonChart({
   const getMeasurementPoint = React.useCallback((event: PointerEvent) => {
     const container = containerRef.current;
     const series = hlSeriesRef.current ?? pmSeriesRef.current;
-    if (!container || !series) return null;
+    const chart = chartRef.current;
+    if (!container || !series || !chart) return null;
     const rect = container.getBoundingClientRect();
     const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
     const y = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
     const price = Number(series.coordinateToPrice(y));
     if (!Number.isFinite(price)) return null;
-    return { x, y, price };
+    const timeMs = chartTimeToMs(chart.timeScale().coordinateToTime(x));
+    return { x, y, price, timeMs: Number.isFinite(timeMs) ? timeMs : null };
   }, []);
 
   React.useEffect(() => {
@@ -1760,7 +1775,9 @@ function PriceComparisonChart({
         endX: point.x,
         endY: point.y,
         startPrice: point.price,
-        endPrice: point.price
+        endPrice: point.price,
+        startTimeMs: point.timeMs,
+        endTimeMs: point.timeMs
       });
     };
 
@@ -1776,14 +1793,15 @@ function PriceComparisonChart({
         endX: point.x,
         endY: point.y,
         startPrice: start.price,
-        endPrice: point.price
+        endPrice: point.price,
+        startTimeMs: start.timeMs,
+        endTimeMs: point.timeMs
       });
     };
 
-    const onPointerUp = (event: PointerEvent) => {
-      if (!measurementStartRef.current) return;
-      event.preventDefault();
+    const onWindowPointerDown = () => {
       measurementStartRef.current = null;
+      setMeasurement(null);
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1795,12 +1813,12 @@ function PriceComparisonChart({
 
     container.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointerdown", onWindowPointerDown);
     window.addEventListener("keydown", onKeyDown);
     return () => {
       container.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointerdown", onWindowPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [getMeasurementPoint]);
@@ -1837,7 +1855,13 @@ function PriceComparisonChart({
   const measurementWidth = measurement ? Math.abs(measurement.endX - measurement.startX) : 0;
   const measurementHeight = measurement ? Math.abs(measurement.endY - measurement.startY) : 0;
   const measurementLabelX = measurement ? Math.min(Math.max(measurement.endX + 10, 8), Math.max(8, (containerRef.current?.clientWidth ?? 0) - 178)) : 0;
-  const measurementLabelY = measurement ? Math.min(Math.max(measurement.endY - 18, 8), Math.max(8, (containerRef.current?.clientHeight ?? 0) - 58)) : 0;
+  const measurementLabelY = measurement ? Math.min(Math.max(measurement.endY - 18, 8), Math.max(8, (containerRef.current?.clientHeight ?? 0) - 86)) : 0;
+  const measurementTimeDelta =
+    measurement?.startTimeMs != null && measurement.endTimeMs != null ? measurement.endTimeMs - measurement.startTimeMs : null;
+  const measurementTimeRange =
+    measurement?.startTimeMs != null && measurement.endTimeMs != null
+      ? `${formatLocalDateTime(Math.min(measurement.startTimeMs, measurement.endTimeMs))} - ${formatLocalDateTime(Math.max(measurement.startTimeMs, measurement.endTimeMs))}`
+      : "Time range n/a";
 
   return (
     <section className="panel priceChartPanel">
@@ -1900,6 +1924,8 @@ function PriceComparisonChart({
                 {formatUsd(measurementDelta)}
               </strong>
               <span>{measurementPct == null ? "n/a" : formatSignedPercent(measurementPct)}</span>
+              <small>{formatDuration(measurementTimeDelta)}</small>
+              <em>{measurementTimeRange}</em>
             </div>
           </div>
         ) : null}
@@ -1909,7 +1935,7 @@ function PriceComparisonChart({
           {hlHistoryStatus} · {historyStatus}
         </span>
         <span>
-          {displayPoints.length} PM buckets · {displayCandles.length} HL {selectedInterval.label} candles · Shift-drag measures %
+          {displayPoints.length} PM buckets · {displayCandles.length} HL {selectedInterval.label} candles · Shift-click measures %
         </span>
       </div>
     </section>

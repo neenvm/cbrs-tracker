@@ -440,7 +440,7 @@ h1 {
   position: absolute;
   display: grid;
   gap: 1px;
-  min-width: 140px;
+  min-width: 170px;
   padding: 7px 8px;
   border: 1px solid var(--line-strong);
   background: var(--ink);
@@ -464,6 +464,14 @@ h1 {
 
 .measureLabel span {
   color: rgba(255, 255, 255, 0.72);
+}
+
+.measureLabel small,
+.measureLabel em {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.62rem;
+  font-style: normal;
+  line-height: 1.25;
 }
 
 .chartFooter {
