@@ -1424,6 +1424,10 @@ h1 {
   text-decoration: none;
 }
 
+.tradeWallet .profileLink {
+  color: var(--ink);
+}
+
 .tradeWallet a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;

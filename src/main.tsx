@@ -356,6 +356,11 @@ const formatSignedCompactUsd = (value: number) => `${value >= 0 ? "+" : ""}${for
 
 const shortAddress = (value: string | null | undefined) => (value ? `${value.slice(0, 6)}...${value.slice(-4)}` : "n/a");
 
+const polymarketProfileHref = (wallet: string | null | undefined) => {
+  if (!wallet || !/^0x[a-fA-F0-9]{40}$/.test(wallet)) return null;
+  return `https://polymarket.com/profile/${wallet}`;
+};
+
 const formatImpliedPriceRange = (low: number | null, high: number | null) => {
   const lowPrice = low == null ? null : low / OFFICIAL_POST_OFFERING_SHARES;
   const highPrice = high == null ? null : high / OFFICIAL_POST_OFFERING_SHARES;
@@ -2425,6 +2430,7 @@ function App() {
                 const isLarge = trade.notional >= largeTradeCutoff;
                 const isLargest = largestTrade === trade;
                 const txHref = trade.transactionHash ? `https://polygonscan.com/tx/${trade.transactionHash}` : null;
+                const profileHref = polymarketProfileHref(trade.proxyWallet);
                 return (
                   <div
                     className={`tradeRow ${trade.yesDirection === "up" ? "up" : "down"} ${isLarge ? "large" : ""} ${isLargest ? "largest" : ""}`}
@@ -2446,7 +2452,13 @@ function App() {
                       </span>
                     </div>
                     <div className="tradeWallet">
-                      <span>{trade.traderLabel}</span>
+                      {profileHref ? (
+                        <a className="profileLink" href={profileHref} target="_blank" rel="noreferrer">
+                          {trade.traderLabel}
+                        </a>
+                      ) : (
+                        <span>{trade.traderLabel}</span>
+                      )}
                       <small>{trade.source === "clob" ? "wallet pending" : shortAddress(trade.proxyWallet)}</small>
                       {txHref ? (
                         <a href={txHref} target="_blank" rel="noreferrer">
