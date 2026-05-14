@@ -40,6 +40,8 @@ For the chart, historical Polymarket-implied CBRS values are reconstructed from 
 
 Chart controls select candle aggregation interval, not the visible date range. Hyperliquid candles and the Polymarket overlay are bucketed to the selected interval (`1m`, `5m`, `15m`, or `1h`) while the x-axis displays compact local time/date labels. The chart supports normal wheel/pinch zooming and drag panning; use `Fit` to reset the view to all loaded data.
 
+Hyperliquid chart candles are loaded from the earliest candle returned by the public `candleSnapshot` endpoint for `xyz:CBRS`. Polymarket chart history is shorter because the CLOB price-history endpoint rejects longer high-density windows; the app keeps the two sources separate so full Hyperliquid history remains visible even when Polymarket reconstruction is limited.
+
 The app also summarizes the Polymarket resolution rules: the markets resolve on Cerebras' market capitalization at the official first-day closing price, using official company filings/disclosures for share count and the primary exchange official listing page for closing price. Exact boundary values resolve to the higher bracket, and if no IPO occurs by June 30, 2026 at 11:59 PM ET, the no-IPO-before-July market resolves Yes.
 
 ## Live Data Behavior

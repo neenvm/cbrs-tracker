@@ -705,13 +705,18 @@ function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBr
 
 async function fetchHistoricalPriceSeries(lower: MarketBracket[], upper: MarketBracket[]) {
   const endMs = Date.now();
-  const startMs = endMs - POLYMARKET_HISTORY_DAYS * 24 * 60 * 60 * 1000;
-  const startTs = Math.floor(startMs / 1000);
+  const polymarketStartMs = endMs - POLYMARKET_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  const startTs = Math.floor(polymarketStartMs / 1000);
   const endTs = Math.floor(endMs / 1000);
   const tokenIds = [...new Set([...lower, ...upper].map((row) => row.tokenId).filter(Boolean))];
-  const [hyperCandles, polymarketHistories] = await Promise.all([
-    fetchHyperCandles(startMs, endMs),
+  const [hyperCandles, polymarketResult] = await Promise.all([
+    fetchHyperCandles(0, endMs),
     Promise.all(tokenIds.map(async (tokenId) => [tokenId, await fetchPolymarketPriceHistory(tokenId, startTs, endTs)] as const))
+      .then((histories) => ({ histories, error: null }))
+      .catch((error: unknown) => ({
+        histories: [] as Array<readonly [string, Array<{ t: number; p: number }>]>,
+        error: error instanceof Error ? error.message : "Polymarket history unavailable"
+      }))
   ]);
   const hyperByTime = new Map<number, number>();
   const candles = hyperCandles
@@ -727,14 +732,15 @@ async function fetchHistoricalPriceSeries(lower: MarketBracket[], upper: MarketB
     const close = Number(candle.c);
     if (Number.isFinite(close)) hyperByTime.set(candle.t, close);
   });
-  const pmPoints = buildHistoricalPolymarketSeries(lower, upper, Object.fromEntries(polymarketHistories));
+  const pmPoints = polymarketResult.error ? [] : buildHistoricalPolymarketSeries(lower, upper, Object.fromEntries(polymarketResult.histories));
   return {
     points: pmPoints.map((point) => ({
       time: point.time,
       polymarket: point.value,
       hyperliquid: hyperByTime.get(Math.floor(point.time / 60000) * 60000) ?? null
     })),
-    candles
+    candles,
+    polymarketError: polymarketResult.error
   };
 }
 
@@ -1323,17 +1329,29 @@ function App() {
     let cancelled = false;
     setHistoryStatus("Loading public chart history");
     fetchHistoricalPriceSeries(lower, upper)
-      .then(({ points, candles }) => {
+      .then(({ points, candles, polymarketError }) => {
         if (cancelled) return;
         setHistoricalPriceHistory(points);
         setHyperCandleHistory(candles);
-        const first = points[0]?.time;
-        const last = points.at(-1)?.time;
-        setHistoryStatus(
-          first && last
-            ? `Strict PM reconstruction loaded (${POLYMARKET_HISTORY_FIDELITY_MINUTES}m CLOB): ${formatLocalDateTime(first)} - ${formatLocalDateTime(last)}`
-            : "No historical Polymarket/HL overlap found; showing live session"
-        );
+        const pmFirst = points[0]?.time;
+        const pmLast = points.at(-1)?.time;
+        const hlFirst = candles[0]?.time;
+        const hlLast = candles.at(-1)?.time;
+        if (hlFirst && hlLast && pmFirst && pmLast) {
+          setHistoryStatus(
+            `HL full available history: ${formatLocalDateTime(hlFirst)} - ${formatLocalDateTime(hlLast)} · PM reconstruction (${POLYMARKET_HISTORY_FIDELITY_MINUTES}m CLOB): ${formatLocalDateTime(pmFirst)} - ${formatLocalDateTime(pmLast)}`
+          );
+        } else if (hlFirst && hlLast) {
+          setHistoryStatus(
+            `HL full available history: ${formatLocalDateTime(hlFirst)} - ${formatLocalDateTime(hlLast)}${polymarketError ? ` · PM history unavailable: ${polymarketError}` : ""}`
+          );
+        } else if (pmFirst && pmLast) {
+          setHistoryStatus(
+            `PM reconstruction loaded (${POLYMARKET_HISTORY_FIDELITY_MINUTES}m CLOB): ${formatLocalDateTime(pmFirst)} - ${formatLocalDateTime(pmLast)}`
+          );
+        } else {
+          setHistoryStatus("No historical Polymarket/HL overlap found; showing live session");
+        }
       })
       .catch((error) => {
         if (cancelled) return;
