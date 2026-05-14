@@ -20,6 +20,10 @@ import "./styles.css";
 type PolymarketEvent = {
   slug: string;
   title: string;
+  volume?: string | number | null;
+  volume24hr?: string | number | null;
+  liquidity?: string | number | null;
+  liquidityClob?: string | number | null;
   markets: PolymarketMarket[];
 };
 
@@ -507,6 +511,11 @@ const boundsFor = (row: Pick<MarketBracket, "low" | "high">) => {
 const clamp = (value: number, low = 0, high = 1) => Math.min(Math.max(value, low), high);
 
 const finiteOrNull = (value: number | null | undefined) => (value != null && Number.isFinite(value) ? value : null);
+
+const eventNumber = (value: string | number | null | undefined) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const deriveRobustYesPrice = ({
   quoteMidpoint,
@@ -1954,9 +1963,14 @@ function App() {
   const capP75 = distributionQuantile(distribution, 0.75);
   const capP90 = distributionQuantile(distribution, 0.9);
   const allBrackets = [...lower, ...upper];
-  const pmVolume24h = allBrackets.reduce((sum, row) => sum + row.volume24h, 0);
-  const pmVolumeTotal = allBrackets.reduce((sum, row) => sum + row.volumeTotal, 0);
-  const pmLiquidity = allBrackets.reduce((sum, row) => sum + row.liquidity, 0);
+  const pmBracketVolume24h = allBrackets.reduce((sum, row) => sum + row.volume24h, 0);
+  const pmBracketVolumeTotal = allBrackets.reduce((sum, row) => sum + row.volumeTotal, 0);
+  const pmVolume24h =
+    eventNumber(data.lowerEvent?.volume24hr) + eventNumber(data.upperEvent?.volume24hr) || pmBracketVolume24h;
+  const pmVolumeTotal = eventNumber(data.lowerEvent?.volume) + eventNumber(data.upperEvent?.volume) || pmBracketVolumeTotal;
+  const pmLiquidity =
+    eventNumber(data.lowerEvent?.liquidityClob ?? data.lowerEvent?.liquidity) +
+      eventNumber(data.upperEvent?.liquidityClob ?? data.upperEvent?.liquidity) || allBrackets.reduce((sum, row) => sum + row.liquidity, 0);
   const qualityRows = distribution.map((row) => {
     const depth = data.polymarketDepth[row.tokenId];
     return {
@@ -2176,7 +2190,7 @@ function App() {
           icon={<BarChart3 size={22} />}
           label="PM 24h volume"
           value={formatMaybeCompactUsd(pmVolume24h)}
-          detail={`${formatMaybeCompactUsd(pmLiquidity)} combined CLOB liquidity`}
+          detail="Event-level volume across both PM links"
         />
         <MetricCard
           icon={<BarChart3 size={22} />}
@@ -2398,12 +2412,12 @@ function App() {
           <div>
             <span>Polymarket combined 24h</span>
             <strong>{formatMaybeCompactUsd(pmVolume24h)}</strong>
-            <small>Both linked event pages, bracket markets only</small>
+            <small>Event-level volume across both links, including no-IPO markets</small>
           </div>
           <div>
             <span>Polymarket total volume</span>
             <strong>{formatMaybeCompactUsd(pmVolumeTotal)}</strong>
-            <small>Lifetime event volume from CLOB/Gamma fields, bracket markets only</small>
+            <small>Lifetime event-level volume across both linked Polymarket pages</small>
           </div>
           <div>
             <span>Polymarket displayed liquidity</span>
