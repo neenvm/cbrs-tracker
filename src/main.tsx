@@ -178,6 +178,9 @@ const LOWER_SLUG = "cerebras-ipo-closing-market-cap";
 const UPPER_SLUG = "cerebras-ipo-closing-market-cap-539";
 const HYPER_COIN = "xyz:CBRS";
 const LIVE_REFRESH_MS = 5000;
+const POLYMARKET_HISTORY_DAYS = 14;
+const POLYMARKET_HISTORY_FIDELITY_MINUTES = 5;
+const POLYMARKET_HISTORY_BUCKET_SECONDS = POLYMARKET_HISTORY_FIDELITY_MINUTES * 60;
 const IPO_OFFER_PRICE = 185;
 const IPO_OFFERED_SHARES = 30_000_000;
 const IPO_OVERALLOTMENT_SHARES = 4_500_000;
@@ -255,6 +258,23 @@ const formatMaybeNumber = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
     ? "n/a"
     : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+
+const formatLocalTime = (value: number | Date) =>
+  new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  }).format(value);
+
+const formatLocalDateTime = (value: number | Date) =>
+  new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(value);
 
 const parseJsonArray = <T,>(value: string): T[] => {
   try {
@@ -577,25 +597,36 @@ async function fetchPolymarketPriceHistory(tokenId: string, startTs: number, end
     startTs: String(startTs),
     endTs: String(endTs),
     interval: "all",
-    fidelity: "5"
+    fidelity: String(POLYMARKET_HISTORY_FIDELITY_MINUTES)
   });
   const response = await fetch(`/polymarket-clob/prices-history?${params.toString()}`);
-  if (!response.ok) throw new Error(`Polymarket price history returned ${response.status}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Polymarket price history returned ${response.status}${detail ? `: ${detail}` : ""}`);
+  }
   const payload = (await response.json()) as { history?: Array<{ t: number; p: number }> };
   return payload.history ?? [];
 }
 
 function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBracket[], histories: Record<string, Array<{ t: number; p: number }>>) {
-  const brackets = [...lower, ...upper];
-  const tokenIds = brackets.map((row) => row.tokenId).filter(Boolean);
-  const timestamps = [...new Set(Object.values(histories).flatMap((history) => history.map((point) => point.t)))].sort((a, b) => a - b);
+  const tokenIds = [...new Set([...lower, ...upper].map((row) => row.tokenId).filter(Boolean))];
+  const normalizedHistories = Object.fromEntries(
+    Object.entries(histories).map(([tokenId, history]) => [
+      tokenId,
+      history
+        .map((point) => ({ t: Math.floor(point.t / POLYMARKET_HISTORY_BUCKET_SECONDS) * POLYMARKET_HISTORY_BUCKET_SECONDS, p: Number(point.p) }))
+        .filter((point) => Number.isFinite(point.p))
+        .sort((a, b) => a.t - b.t)
+    ])
+  );
+  const timestamps = [...new Set(Object.values(normalizedHistories).flatMap((history) => history.map((point) => point.t)))].sort((a, b) => a - b);
   const latest = new Map<string, number>();
   const cursors = new Map<string, number>(tokenIds.map((tokenId) => [tokenId, 0]));
   const points: Array<{ time: number; value: number }> = [];
 
   timestamps.forEach((timestamp) => {
     tokenIds.forEach((tokenId) => {
-      const history = histories[tokenId] ?? [];
+      const history = normalizedHistories[tokenId] ?? [];
       let cursor = cursors.get(tokenId) ?? 0;
       while (cursor < history.length && history[cursor].t <= timestamp) {
         const price = Number(history[cursor].p);
@@ -605,10 +636,10 @@ function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBr
       cursors.set(tokenId, cursor);
     });
 
-    const coverage = tokenIds.filter((tokenId) => latest.has(tokenId)).length / Math.max(tokenIds.length, 1);
-    if (coverage < 0.65) return;
-    const lowerAtTime = lower.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId) ?? row.yesPrice }));
-    const upperAtTime = upper.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId) ?? row.yesPrice }));
+    const hasFullCoverage = tokenIds.every((tokenId) => latest.has(tokenId));
+    if (!hasFullCoverage) return;
+    const lowerAtTime = lower.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId)! }));
+    const upperAtTime = upper.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId)! }));
     const cap = expectedMarketCap(buildDistribution(lowerAtTime, upperAtTime));
     if (Number.isFinite(cap) && cap > 0) points.push({ time: timestamp * 1000, value: cap / OFFICIAL_POST_OFFERING_SHARES });
   });
@@ -618,7 +649,7 @@ function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBr
 
 async function fetchHistoricalPriceSeries(lower: MarketBracket[], upper: MarketBracket[]) {
   const endMs = Date.now();
-  const startMs = endMs - 8 * 24 * 60 * 60 * 1000;
+  const startMs = endMs - POLYMARKET_HISTORY_DAYS * 24 * 60 * 60 * 1000;
   const startTs = Math.floor(startMs / 1000);
   const endTs = Math.floor(endMs / 1000);
   const tokenIds = [...new Set([...lower, ...upper].map((row) => row.tokenId).filter(Boolean))];
@@ -970,11 +1001,12 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const latest = points.at(-1);
   const selectedRange = CHART_RANGES.find((item) => item.id === range) ?? CHART_RANGES[1];
+  const latestLoadedTime = Math.max(points.at(-1)?.time ?? 0, candles.at(-1)?.time ?? 0);
+  const visibleCutoff = selectedRange.ms && latestLoadedTime ? latestLoadedTime - selectedRange.ms : null;
   const visiblePoints = React.useMemo(() => {
-    if (!selectedRange.ms || points.length === 0) return points;
-    const cutoff = Date.now() - selectedRange.ms;
-    return points.filter((point) => point.time >= cutoff);
-  }, [points, selectedRange.ms]);
+    if (!visibleCutoff || points.length === 0) return points;
+    return points.filter((point) => point.time >= visibleCutoff);
+  }, [points, visibleCutoff]);
 
   React.useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
@@ -1009,10 +1041,15 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
       timeScale: {
         borderColor: "rgba(82, 96, 120, 0.22)",
         timeVisible: true,
-        secondsVisible: false
+        secondsVisible: false,
+        tickMarkFormatter: (time: unknown) => formatLocalTime(Number(time) * 1000)
       },
-      handleScale: true,
-      handleScroll: true
+      localization: {
+        timeFormatter: (time: unknown) => formatLocalTime(Number(time) * 1000),
+        priceFormatter: (price: number) => formatUsd(price, 2)
+      },
+      handleScale: false,
+      handleScroll: false
     });
     const pmSeries = chart.addSeries(LineSeries, {
       color: "#2557d6",
@@ -1060,14 +1097,13 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
 
   React.useEffect(() => {
     const pmData = toLineData(visiblePoints, "polymarket");
-    const cutoff = visiblePoints[0]?.time ?? 0;
-    const candleData = toCandleData(candles.filter((candle) => candle.time >= cutoff));
+    const candleData = toCandleData(candles.filter((candle) => !visibleCutoff || candle.time >= visibleCutoff));
     pmSeriesRef.current?.setData(pmData);
     hlSeriesRef.current?.setData(candleData);
     if (pmData.length || candleData.length) {
       chartRef.current?.timeScale().fitContent();
     }
-  }, [visiblePoints, candles]);
+  }, [visiblePoints, candles, visibleCutoff]);
 
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
@@ -1091,12 +1127,12 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
         <span>PM {readout?.polymarket == null ? "n/a" : formatUsd(readout.polymarket)}</span>
         <span>HL candle {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
         <span>Spread {readoutSpread == null ? "n/a" : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)}`}</span>
-        <span>{readout?.time ? new Date(readout.time * 1000).toLocaleTimeString() : "Waiting for data"}</span>
+        <span>{readout?.time ? formatLocalTime(readout.time * 1000) : "Waiting for data"}</span>
       </div>
       <div className="marketChart" ref={containerRef} />
       <div className="chartFooter">
         <span>{historyStatus}</span>
-        <span>{visiblePoints.length} session samples</span>
+        <span>{visiblePoints.length} PM samples</span>
       </div>
     </section>
   );
@@ -1194,7 +1230,7 @@ function App() {
         const last = points.at(-1)?.time;
         setHistoryStatus(
           first && last
-            ? `Public history loaded: ${new Date(first).toLocaleString()} - ${new Date(last).toLocaleString()}`
+            ? `Strict PM reconstruction loaded (${POLYMARKET_HISTORY_FIDELITY_MINUTES}m CLOB): ${formatLocalDateTime(first)} - ${formatLocalDateTime(last)}`
             : "No historical Polymarket/HL overlap found; showing live session"
         );
       })
@@ -1333,7 +1369,7 @@ function App() {
               <p>Normalized Distribution</p>
               <h2>Closing market cap brackets</h2>
             </div>
-            <span>{data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : "No update yet"}</span>
+            <span>{data.lastUpdated ? formatLocalTime(data.lastUpdated) : "No update yet"}</span>
           </div>
           <div className="bars">
             {qualityRows.map((row) => {
@@ -1359,8 +1395,11 @@ function App() {
             })}
           </div>
           <p className="caption">
-            The definitive value is the expected market cap from this live blended distribution, divided by the official post-offering share count. The value
-            range assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B for quantile math.
+            The definitive value is the expected market cap from this live blended distribution, divided by the official post-offering share count. Historical
+            PM chart points are reconstructed from the highest-density accepted public CLOB Yes-token history ({POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute
+            fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no current prices are backfilled into historical
+            points. The value range assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B for
+            quantile math.
           </p>
         </div>
       </section>
@@ -1371,7 +1410,7 @@ function App() {
             <p>Market Quality</p>
             <h2>Volume, liquidity, and book depth</h2>
           </div>
-          <span>HL book {data.hyperQuality?.bookTime ? new Date(data.hyperQuality.bookTime).toLocaleTimeString() : "n/a"}</span>
+          <span>HL book {data.hyperQuality?.bookTime ? formatLocalTime(data.hyperQuality.bookTime) : "n/a"}</span>
         </div>
         <div className="qualityGrid">
           <div>

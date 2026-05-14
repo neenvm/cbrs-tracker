@@ -36,6 +36,8 @@ E[Polymarket closing market cap] / official post-offering shares
 
 The current official post-offering share count used by the app is `215,228,541`, based on `30.0m` offered Class A shares plus `185.228541m` Class B shares from the latest checked S-1/A context. Alternate official share-count views are shown only as methodology audit rows; they do not drive the headline comparison.
 
+For the chart, historical Polymarket-implied CBRS values are reconstructed from public CLOB Yes-token price history for every required bracket and `$50B` anchor market. The app uses the highest-density accepted public history shape currently observed for this endpoint: 14 days at 5-minute fidelity. A historical point is emitted only after all required Yes tokens have historical coverage; current live prices are not backfilled into old points.
+
 ## Live Data Behavior
 
 Hyperliquid:
@@ -49,6 +51,7 @@ Polymarket:
 - Event metadata comes from Gamma.
 - Yes-token midpoints come from the CLOB midpoint endpoint.
 - Order-book depth comes from the CLOB books endpoint.
+- Historical chart points come from the CLOB price-history endpoint.
 - Polymarket CLOB/Gamma data refreshes every 5 seconds.
 
 The app uses no private API keys.
