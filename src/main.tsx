@@ -186,6 +186,7 @@ type MarketBracket = {
   low: number | null;
   high: number | null;
   midpoint: number;
+  pageYesPrice: number | null;
   yesPrice: number;
   quoteMidpoint: number | null;
   referencePrice: number | null;
@@ -621,12 +622,13 @@ const marketToBracket = (
   const bid = isClosed ? null : bookDepth?.bestBid ?? market.bestBid;
   const ask = isClosed ? null : bookDepth?.bestAsk ?? market.bestAsk;
   const quoteMidpoint = isClosed ? null : finiteOrNull(midpoints[tokenId]) ?? (bid != null && ask != null ? (bid + ask) / 2 : null);
+  const pageYesPrice = finiteOrNull(prices[yesIndex]);
   const robustPrice = deriveRobustYesPrice({
     quoteMidpoint,
     bestBid: bid,
     bestAsk: ask,
     last: market.lastTradePrice,
-    gammaPrice: prices[yesIndex],
+    gammaPrice: pageYesPrice,
     nearTouchDepth: isClosed ? 0 : (bookDepth?.bidDepth2c ?? 0) + (bookDepth?.askDepth2c ?? 0)
   });
   return {
@@ -636,6 +638,7 @@ const marketToBracket = (
     low: parsed.low,
     high: parsed.high,
     midpoint: midpointFor(parsed.low, parsed.high),
+    pageYesPrice,
     yesPrice: robustPrice.yesPrice,
     quoteMidpoint: robustPrice.quoteMidpoint,
     referencePrice: robustPrice.referencePrice,
@@ -1576,11 +1579,15 @@ function StrikePopover({
 
       <div className="strikeProbGrid">
         <div>
-          <span>Raw Yes</span>
+          <span>PM page Yes</span>
+          <strong>{row.pageYesPrice == null ? "n/a" : formatPercent(row.pageYesPrice)}</strong>
+        </div>
+        <div>
+          <span>Robust Yes</span>
           <strong>{formatPercent(row.yesPrice)}</strong>
         </div>
         <div>
-          <span>Blended</span>
+          <span>Blended prob</span>
           <strong>{formatPercent(row.probability)}</strong>
         </div>
         <div>
@@ -2500,10 +2507,17 @@ function App() {
         <div className="panel chartPanel">
           <div className="panelHeader">
             <div>
-              <p>Normalized Distribution</p>
+              <p>Blended distribution</p>
               <h2>Closing market cap brackets</h2>
             </div>
             <span>{data.lastUpdated ? formatLocalTime(data.lastUpdated) : "No update yet"}</span>
+          </div>
+          <div className="barLegend" aria-label="Bracket row legend">
+            <span>Bracket</span>
+            <span>Blended probability</span>
+            <span>Implied close</span>
+            <span>PM page Yes</span>
+            <span>Blend</span>
           </div>
           <div className="bars">
             {qualityRows.map((row) => {
@@ -2523,6 +2537,7 @@ function App() {
                     <div className="barFill" style={{ width: `${Math.max((row.probability / maxProbability) * 100, 2)}%` }} />
                   </div>
                   <div className="barPrice">{formatImpliedPriceRange(row.low, row.high)}</div>
+                  <div className="barRaw">{row.pageYesPrice == null ? "n/a" : formatPercent(row.pageYesPrice)}</div>
                   <div className="barValue">{formatPercent(row.probability)}</div>
                   <StrikePopover row={row} maxDepth={maxQualityDepth} maxVolume={maxQualityVolume} maxLiquidity={maxQualityLiquidity} />
                 </div>
@@ -2684,7 +2699,9 @@ function App() {
           </div>
           <p className="caption">
             The definitive PM closing value is the expected first-day closing market cap from a robust live distribution, divided by the official
-            post-offering share count. Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
+            post-offering share count. The bracket rows show both Polymarket's raw page Yes price and this dashboard's blended probability; they can differ
+            because the two Polymarket pages are separate binary markets that are anchored through the &lt;$50B / at least $50B overlap before normalization.
+            Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
             the current Gamma price, falling back to last trade only if needed, so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart
             points are reconstructed from the
             highest-density accepted public CLOB Yes-token history (
@@ -3081,6 +3098,7 @@ function App() {
               <tr>
                 <th>Bracket</th>
                 <th>Source</th>
+                <th>PM Page Yes</th>
                 <th>Robust Yes</th>
                 <th>Blended Prob.</th>
                 <th>Bid / Ask</th>
@@ -3096,6 +3114,7 @@ function App() {
                 <tr key={row.id}>
                   <td>{row.label}</td>
                   <td>{row.source}</td>
+                  <td>{row.pageYesPrice == null ? "n/a" : formatPercent(row.pageYesPrice)}</td>
                   <td>{formatPercent(row.yesPrice)}</td>
                   <td>{formatPercent(row.probability)}</td>
                   <td>

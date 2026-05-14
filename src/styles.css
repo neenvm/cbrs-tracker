@@ -498,6 +498,24 @@ h1 {
   z-index: 30;
 }
 
+.barLegend {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 168px 70px 68px;
+  gap: 12px;
+  margin: 10px 0 7px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.barLegend span:first-child,
+.barLegend span:nth-child(2) {
+  text-align: left;
+}
+
 .distributionLens {
   position: relative;
   z-index: 1;
@@ -818,7 +836,7 @@ h1 {
 
 .barRow {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 168px 68px;
+  grid-template-columns: 92px minmax(0, 1fr) 168px 70px 68px;
   align-items: center;
   gap: 12px;
   position: relative;
@@ -834,6 +852,7 @@ h1 {
 
 .barLabel,
 .barPrice,
+.barRaw,
 .barValue {
   color: var(--ink);
   font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
@@ -844,6 +863,12 @@ h1 {
 
 .barValue {
   text-align: right;
+}
+
+.barRaw {
+  color: #5d6674;
+  text-align: right;
+  font-size: 0.72rem;
 }
 
 .barPrice {
@@ -942,7 +967,7 @@ h1 {
 
 .strikeProbGrid {
   display: grid;
-  grid-template-columns: 0.75fr 0.75fr 1.1fr 1.35fr;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1900,7 +1925,12 @@ tbody tr:hover {
   }
 
   .barRow {
-    grid-template-columns: 76px minmax(0, 1fr) 118px 54px;
+    grid-template-columns: 76px minmax(0, 1fr) 118px 54px 54px;
+    gap: 8px;
+  }
+
+  .barLegend {
+    grid-template-columns: 76px minmax(0, 1fr) 118px 54px 54px;
     gap: 8px;
   }
 
