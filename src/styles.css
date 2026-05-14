@@ -424,6 +424,10 @@ h1 {
   background: var(--amber);
 }
 
+.miniBarFill.blue {
+  background: var(--blue);
+}
+
 .strikePopover {
   position: absolute;
   top: 50%;
@@ -721,6 +725,10 @@ h1 {
   margin-bottom: 8px;
 }
 
+.tradeMonitorPanel {
+  margin-bottom: 8px;
+}
+
 .qualityGrid,
 .detailGrid {
   display: grid;
@@ -803,11 +811,51 @@ h1 {
 }
 
 .depthHeader span,
-.bookTotals span {
+.bookTotals span,
+.qualityLegend span {
   color: var(--muted);
   font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.68rem;
   font-weight: 800;
+}
+
+.qualityLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.qualityLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.qualityLegend i {
+  width: 14px;
+  height: 7px;
+  border: 1px solid var(--line-strong);
+  font-style: normal;
+}
+
+.goldDot {
+  background: var(--amber);
+}
+
+.greenDot {
+  background: var(--green);
+}
+
+.blueDot {
+  background: var(--blue);
+}
+
+.redDot {
+  background: var(--red);
 }
 
 .orderBook,
@@ -875,7 +923,7 @@ h1 {
 .pmQualityHead,
 .pmQualityRow {
   display: grid;
-  grid-template-columns: 80px 58px 150px repeat(3, minmax(112px, 1fr));
+  grid-template-columns: 80px 58px 150px repeat(4, minmax(104px, 1fr));
   gap: 8px;
   align-items: center;
   min-height: 30px;
@@ -890,6 +938,148 @@ h1 {
 .pmQualityRow > span {
   color: var(--ink);
   text-align: right;
+}
+
+.tradeMonitorGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.35fr);
+  gap: 8px;
+}
+
+.tradePressure,
+.tradeFeed {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.pressureRows,
+.tradeRows {
+  display: grid;
+  gap: 6px;
+}
+
+.pressureRow,
+.tradeRow {
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.pressureRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px;
+}
+
+.pressureRow div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pressureRow strong,
+.tradeRow strong,
+.tradeRow b {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pressureRow span,
+.pressureRow small,
+.tradeRow span,
+.tradeRow small,
+.tradeRow em,
+.emptyState {
+  color: #5d6674;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.pressureRow b {
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pressureRow small {
+  grid-column: 1 / -1;
+}
+
+.upText {
+  color: var(--green);
+}
+
+.downText {
+  color: var(--red);
+}
+
+.tradeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr) minmax(124px, 0.45fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-left-width: 3px;
+}
+
+.tradeRow.up {
+  border-left-color: var(--green);
+}
+
+.tradeRow.down {
+  border-left-color: var(--red);
+}
+
+.tradeRow.large {
+  background: #fff8e8;
+}
+
+.tradeMain,
+.tradeDetail,
+.tradeWallet {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tradeTime,
+.tradeWallet span,
+.tradeWallet a {
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tradeRow em {
+  font-style: normal;
+}
+
+.tradeWallet {
+  text-align: right;
+}
+
+.tradeWallet a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.tradeWallet a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.emptyState {
+  padding: 8px;
+  border: 1px dashed var(--line);
+  background: var(--paper);
 }
 
 .tableWrap {
@@ -931,9 +1121,13 @@ tbody tr:hover {
   .metricsGrid,
   .workspace,
   .qualityGrid,
-  .detailGrid,
-  .depthVisuals {
+  .detailGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .depthVisuals,
+  .tradeMonitorGrid {
+    grid-template-columns: 1fr;
   }
 
   .priceChartPanel,
@@ -943,7 +1137,7 @@ tbody tr:hover {
 
   .pmQualityHead,
   .pmQualityRow {
-    grid-template-columns: 74px 54px 132px repeat(3, minmax(96px, 1fr));
+    grid-template-columns: 74px 54px 132px repeat(4, minmax(92px, 1fr));
   }
 }
 
@@ -965,10 +1159,16 @@ tbody tr:hover {
 
   .metricsGrid,
   .workspace,
-  .qualityGrid,
-  .detailGrid,
-  .depthVisuals {
-    grid-template-columns: 1fr;
+	  .qualityGrid,
+	  .detailGrid,
+	  .depthVisuals,
+	  .tradeMonitorGrid,
+	  .tradeRow {
+	    grid-template-columns: 1fr;
+	  }
+
+  .tradeWallet {
+    text-align: left;
   }
 
   .barRow {

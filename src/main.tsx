@@ -24,6 +24,7 @@ type PolymarketEvent = {
 };
 
 type PolymarketMarket = {
+  conditionId: string;
   question: string;
   slug: string;
   outcomes: string;
@@ -60,6 +61,24 @@ type PolymarketDepth = {
   spread: number | null;
   bidLevels: Array<{ price: number; size: number; notional: number; cumulative: number }>;
   askLevels: Array<{ price: number; size: number; notional: number; cumulative: number }>;
+};
+
+type PolymarketTrade = {
+  proxyWallet: string;
+  side: "BUY" | "SELL" | string;
+  asset: string;
+  conditionId: string;
+  size: number;
+  price: number;
+  timestamp: number;
+  title: string;
+  slug: string;
+  eventSlug: string;
+  outcome: string;
+  outcomeIndex: number;
+  name?: string;
+  pseudonym?: string;
+  transactionHash?: string;
 };
 
 type HyperLevel = {
@@ -119,6 +138,7 @@ type HyperQuality = {
 
 type MarketBracket = {
   id: string;
+  conditionId: string;
   label: string;
   low: number | null;
   high: number | null;
@@ -177,6 +197,7 @@ type DashboardState = {
   upperEvent: PolymarketEvent | null;
   polymarketMidpoints: Record<string, number>;
   polymarketDepth: Record<string, PolymarketDepth>;
+  polymarketTrades: PolymarketTrade[];
   hyperPrice: number | null;
   hyperQuality: HyperQuality | null;
   hyperStatus: "connecting" | "live" | "polling" | "stale" | "error";
@@ -292,6 +313,10 @@ const formatMaybeNumber = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
     ? "n/a"
     : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+
+const formatSignedCompactUsd = (value: number) => `${value >= 0 ? "+" : ""}${formatCompactUsd(value)}`;
+
+const shortAddress = (value: string | null | undefined) => (value ? `${value.slice(0, 6)}...${value.slice(-4)}` : "n/a");
 
 const formatImpliedPriceRange = (low: number | null, high: number | null) => {
   const lowPrice = low == null ? null : low / OFFICIAL_POST_OFFERING_SHARES;
@@ -421,9 +446,10 @@ const marketToBracket = (
   const tokenId = tokens[yesIndex] ?? "";
   const yesPrice = midpoints[tokenId] ?? prices[yesIndex] ?? 0;
   const bookDepth = depth[tokenId];
-  return {
-    id: `${source}-${market.slug}`,
-    label: labelFor(parsed.low, parsed.high),
+	  return {
+	    id: `${source}-${market.slug}`,
+	    conditionId: market.conditionId,
+	    label: labelFor(parsed.low, parsed.high),
     low: parsed.low,
     high: parsed.high,
     midpoint: midpointFor(parsed.low, parsed.high),
@@ -538,6 +564,15 @@ function getYesTokenIds(events: PolymarketEvent[]) {
   );
 }
 
+function getBracketConditionIds(events: PolymarketEvent[]) {
+  return events.flatMap((event) =>
+    event.markets.flatMap((market) => {
+      if (!market.conditionId || /not IPO before July/i.test(market.question) || !parseBracket(market.question)) return [];
+      return [market.conditionId];
+    })
+  );
+}
+
 async function fetchPolymarketMidpoints(tokenIds: string[]) {
   if (tokenIds.length === 0) return {};
   const response = await fetch("/polymarket-clob/midpoints", {
@@ -592,6 +627,26 @@ async function fetchPolymarketBooks(tokenIds: string[]) {
   if (!response.ok) throw new Error(`Polymarket CLOB books returned ${response.status}`);
   const books = (await response.json()) as PolymarketBook[];
   return Object.fromEntries(books.map((book) => [book.asset_id, summarizePolymarketBook(book)]));
+}
+
+async function fetchPolymarketTrades(conditionIds: string[]) {
+  if (conditionIds.length === 0) return [];
+  const params = new URLSearchParams({
+    market: [...new Set(conditionIds)].join(","),
+    limit: "100",
+    takerOnly: "true"
+  });
+  const response = await fetch(`/polymarket-data/trades?${params.toString()}`);
+  if (!response.ok) throw new Error(`Polymarket trades returned ${response.status}`);
+  const raw = (await response.json()) as PolymarketTrade[];
+  return raw
+    .map((trade) => ({
+      ...trade,
+      size: Number(trade.size),
+      price: Number(trade.price),
+      timestamp: Number(trade.timestamp)
+    }))
+    .filter((trade) => Number.isFinite(trade.size) && Number.isFinite(trade.price) && Number.isFinite(trade.timestamp));
 }
 
 async function fetchHyperMid() {
@@ -791,6 +846,7 @@ function useDashboardData() {
     upperEvent: null,
     polymarketMidpoints: {},
     polymarketDepth: {},
+    polymarketTrades: [],
     hyperPrice: null,
     hyperQuality: null,
     hyperStatus: "connecting",
@@ -808,9 +864,11 @@ function useDashboardData() {
       try {
         const [lowerEvent, upperEvent] = await Promise.all([fetchEvent(LOWER_SLUG), fetchEvent(UPPER_SLUG)]);
         const yesTokenIds = getYesTokenIds([lowerEvent, upperEvent]);
-        const [polymarketMidpoints, polymarketDepth] = await Promise.all([
+        const conditionIds = getBracketConditionIds([lowerEvent, upperEvent]);
+        const [polymarketMidpoints, polymarketDepth, polymarketTrades] = await Promise.all([
           fetchPolymarketMidpoints(yesTokenIds),
-          fetchPolymarketBooks(yesTokenIds)
+          fetchPolymarketBooks(yesTokenIds),
+          fetchPolymarketTrades(conditionIds).catch(() => [] as PolymarketTrade[])
         ]);
         if (cancelled) return;
         setState((current) => ({
@@ -819,6 +877,7 @@ function useDashboardData() {
           upperEvent,
           polymarketMidpoints,
           polymarketDepth,
+          polymarketTrades,
           polymarketStatus: "live",
           lastUpdated: Date.now(),
           error: null
@@ -945,7 +1004,7 @@ function DetailItem({ label, value, note }: { label: string; value: string; note
   );
 }
 
-function MiniBar({ value, max, tone = "gold" }: { value: number; max: number; tone?: "green" | "red" | "gold" }) {
+function MiniBar({ value, max, tone = "gold" }: { value: number; max: number; tone?: "green" | "red" | "gold" | "blue" }) {
   const width = max > 0 ? Math.max(Math.sqrt(value / max) * 100, value > 0 ? 2 : 0) : 0;
   return (
     <div className="miniBar">
@@ -954,7 +1013,7 @@ function MiniBar({ value, max, tone = "gold" }: { value: number; max: number; to
   );
 }
 
-function MeasureCell({ value, max, tone }: { value: number; max: number; tone: "green" | "red" | "gold" }) {
+function MeasureCell({ value, max, tone }: { value: number; max: number; tone: "green" | "red" | "gold" | "blue" }) {
   return (
     <div className="measureCell">
       <span>{formatCompactUsd(value)}</span>
@@ -1077,6 +1136,62 @@ function StrikePopover({
     </div>
   );
 }
+
+type AnnotatedTrade = PolymarketTrade & {
+  bracketLabel: string;
+  impliedPriceRange: string;
+  notional: number;
+  yesDirection: "up" | "down";
+  pressure: number;
+  traderLabel: string;
+};
+
+const annotateTrades = (trades: PolymarketTrade[], brackets: MarketBracket[]) => {
+  const byCondition = new Map(brackets.map((row) => [row.conditionId, row]));
+  return trades
+    .map((trade) => {
+      const bracket = byCondition.get(trade.conditionId);
+      if (!bracket) return null;
+      const side = trade.side.toUpperCase();
+      const outcome = trade.outcome.toLowerCase();
+      const isYes = outcome === "yes";
+      const yesDirection: AnnotatedTrade["yesDirection"] = (isYes && side === "BUY") || (!isYes && side === "SELL") ? "up" : "down";
+      const notional = trade.size * trade.price;
+      return {
+        ...trade,
+        side,
+        bracketLabel: bracket.label,
+        impliedPriceRange: formatImpliedPriceRange(bracket.low, bracket.high),
+        notional,
+        yesDirection,
+        pressure: notional * (yesDirection === "up" ? 1 : -1),
+        traderLabel: trade.pseudonym || trade.name || shortAddress(trade.proxyWallet)
+      };
+    })
+    .filter(Boolean) as AnnotatedTrade[];
+};
+
+const summarizeTradePressure = (trades: AnnotatedTrade[]) => {
+  const latestTimestamp = Math.max(...trades.map((trade) => trade.timestamp), 0);
+  const recent = latestTimestamp ? trades.filter((trade) => latestTimestamp - trade.timestamp <= 15 * 60) : trades;
+  const byBracket = new Map<string, { label: string; impliedPriceRange: string; up: number; down: number; net: number; count: number }>();
+  recent.forEach((trade) => {
+    const current = byBracket.get(trade.bracketLabel) ?? {
+      label: trade.bracketLabel,
+      impliedPriceRange: trade.impliedPriceRange,
+      up: 0,
+      down: 0,
+      net: 0,
+      count: 0
+    };
+    if (trade.pressure >= 0) current.up += trade.notional;
+    else current.down += trade.notional;
+    current.net += trade.pressure;
+    current.count += 1;
+    byBracket.set(trade.bracketLabel, current);
+  });
+  return [...byBracket.values()].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+};
 
 const aggregateLineData = (points: PricePoint[], key: "polymarket" | "hyperliquid", intervalMs: number): LineData<UTCTimestamp>[] => {
   const byTime = new Map<number, number>();
@@ -1305,7 +1420,15 @@ function App() {
   const distributionDepth = qualityRows.reduce((sum, row) => sum + row.depthTotal, 0);
   const maxQualityDepth = Math.max(...qualityRows.map((row) => row.depthTotal), 1);
   const maxQualityVolume = Math.max(...qualityRows.map((row) => row.volume24h), 1);
+  const maxQualityTotalVolume = Math.max(...qualityRows.map((row) => row.volumeTotal), 1);
   const maxQualityLiquidity = Math.max(...qualityRows.map((row) => row.liquidity), 1);
+  const annotatedTrades = React.useMemo(() => annotateTrades(data.polymarketTrades, allBrackets), [data.polymarketTrades, allBrackets]);
+  const tradePressureRows = React.useMemo(() => summarizeTradePressure(annotatedTrades), [annotatedTrades]);
+  const largeTradeCutoff = React.useMemo(() => {
+    const notionals = annotatedTrades.map((trade) => trade.notional).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+    return Math.max(250, notionals[Math.floor(notionals.length * 0.9)] ?? 0);
+  }, [annotatedTrades]);
+  const largestTrade = annotatedTrades.reduce<AnnotatedTrade | null>((largest, trade) => (!largest || trade.notional > largest.notional ? trade : largest), null);
   const hyperMidForDepth =
     data.hyperPrice ??
     data.hyperQuality?.markPrice ??
@@ -1672,7 +1795,13 @@ function App() {
           <div className="depthCard">
             <div className="depthHeader">
               <strong>Polymarket bracket quality</strong>
-              <span>Probability, 2c depth, 24h volume, and displayed liquidity</span>
+              <span>Bars are row-relative; longer means larger versus the biggest row in that column</span>
+            </div>
+            <div className="qualityLegend" aria-label="Polymarket bracket quality legend">
+              <span><i className="goldDot" /> 2c near-touch depth</span>
+              <span><i className="greenDot" /> 24h volume</span>
+              <span><i className="blueDot" /> Total volume</span>
+              <span><i className="redDot" /> Displayed liquidity</span>
             </div>
             <div className="pmQualityTable">
               <div className="pmQualityHead">
@@ -1681,6 +1810,7 @@ function App() {
                 <span>Implied close</span>
                 <span>2c depth</span>
                 <span>24h</span>
+                <span>Total vol</span>
                 <span>Liquidity</span>
               </div>
               {qualityRows.map((row) => (
@@ -1690,6 +1820,7 @@ function App() {
                   <span>{formatImpliedPriceRange(row.low, row.high)}</span>
                   <MeasureCell value={row.depthTotal} max={maxQualityDepth} tone="gold" />
                   <MeasureCell value={row.volume24h} max={maxQualityVolume} tone="green" />
+                  <MeasureCell value={row.volumeTotal} max={maxQualityTotalVolume} tone="blue" />
                   <MeasureCell value={row.liquidity} max={maxQualityLiquidity} tone="red" />
                 </div>
               ))}
@@ -1701,6 +1832,83 @@ function App() {
           CLOB midpoints and books are polled every {LIVE_REFRESH_MS / 1000} seconds; Gamma volume/liquidity fields refresh on that same cadence. Polymarket
           depth is shallow near the touch in several brackets, so the visual bars matter more than the combined headline total of{" "}
           {formatMaybeCompactUsd(distributionDepth)}.
+        </p>
+      </section>
+
+      <section className="panel tradeMonitorPanel">
+        <div className="panelHeader">
+          <div>
+            <p>Polymarket Trade Monitor</p>
+            <h2>Recent bracket trades explaining PM moves</h2>
+          </div>
+          <span>{annotatedTrades.length ? `${annotatedTrades.length} latest trades` : "Waiting for trades"}</span>
+        </div>
+        <div className="tradeMonitorGrid">
+          <div className="tradePressure">
+            <div className="depthHeader">
+              <strong>15m pressure by bracket</strong>
+              <span>Yes-up minus Yes-down notional</span>
+            </div>
+            <div className="pressureRows">
+              {tradePressureRows.slice(0, 6).map((row) => (
+                <div className="pressureRow" key={`pressure-${row.label}`}>
+                  <div>
+                    <strong>{row.label}</strong>
+                    <span>{row.impliedPriceRange}</span>
+                  </div>
+                  <b className={row.net >= 0 ? "upText" : "downText"}>{formatSignedCompactUsd(row.net)}</b>
+                  <small>
+                    Up {formatCompactUsd(row.up)} · Down {formatCompactUsd(row.down)}
+                  </small>
+                </div>
+              ))}
+              {tradePressureRows.length === 0 ? <p className="emptyState">No recent Polymarket trades returned yet.</p> : null}
+            </div>
+          </div>
+
+          <div className="tradeFeed">
+            <div className="depthHeader">
+              <strong>Trade feed</strong>
+              <span>
+                Large trade cutoff {formatCompactUsd(largeTradeCutoff)} · biggest {largestTrade ? formatCompactUsd(largestTrade.notional) : "n/a"}
+              </span>
+            </div>
+            <div className="tradeRows">
+              {annotatedTrades.slice(0, 30).map((trade) => {
+                const isLarge = trade.notional >= largeTradeCutoff;
+                const txHref = trade.transactionHash ? `https://polygonscan.com/tx/${trade.transactionHash}` : null;
+                return (
+                  <div className={`tradeRow ${trade.yesDirection === "up" ? "up" : "down"} ${isLarge ? "large" : ""}`} key={`${trade.transactionHash}-${trade.asset}-${trade.timestamp}`}>
+                    <div className="tradeMain">
+                      <span className="tradeTime">{formatLocalTime(trade.timestamp * 1000)}</span>
+                      <strong>{trade.bracketLabel}</strong>
+                      <em>{trade.impliedPriceRange}</em>
+                    </div>
+                    <div className="tradeDetail">
+                      <b>{trade.yesDirection === "up" ? "Yes pressure up" : "Yes pressure down"}</b>
+                      <span>
+                        {trade.side} {trade.outcome} · {formatCompactUsd(trade.notional)} at {formatPercent(trade.price)}
+                      </span>
+                    </div>
+                    <div className="tradeWallet">
+                      <span>{trade.traderLabel}</span>
+                      <small>{shortAddress(trade.proxyWallet)}</small>
+                      {txHref ? (
+                        <a href={txHref} target="_blank" rel="noreferrer">
+                          tx
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+              {annotatedTrades.length === 0 ? <p className="emptyState">No trade feed data yet. The Data API is polled with the rest of Polymarket.</p> : null}
+            </div>
+          </div>
+        </div>
+        <p className="caption">
+          Direction is normalized to the Yes side: BUY Yes and SELL No push the bracket's Yes probability up; SELL Yes and BUY No push it down. This makes
+          pumps/dumps easier to read when the raw trade is on the No token.
         </p>
       </section>
 

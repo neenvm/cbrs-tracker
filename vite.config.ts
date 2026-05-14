@@ -15,6 +15,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/polymarket-clob/, "")
       },
+      "/polymarket-data": {
+        target: "https://data-api.polymarket.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/polymarket-data/, "")
+      },
       "/hyperliquid-info": {
         target: "https://api.hyperliquid.xyz",
         changeOrigin: true,
@@ -23,4 +28,3 @@ export default defineConfig({
     }
   }
 });
-
