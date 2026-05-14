@@ -155,6 +155,7 @@ type ChartCandle = {
 };
 
 type ChartInterval = "1m" | "5m" | "15m" | "1h";
+type ChartCandleMap = Record<ChartInterval, ChartCandle[]>;
 
 const CHART_INTERVALS: Array<{ id: ChartInterval; label: string; ms: number }> = [
   { id: "1m", label: "1m", ms: 60_000 },
@@ -162,6 +163,13 @@ const CHART_INTERVALS: Array<{ id: ChartInterval; label: string; ms: number }> =
   { id: "15m", label: "15m", ms: 15 * 60_000 },
   { id: "1h", label: "1h", ms: 60 * 60_000 }
 ];
+
+const emptyCandleMap = (): ChartCandleMap => ({
+  "1m": [],
+  "5m": [],
+  "15m": [],
+  "1h": []
+});
 
 type DashboardState = {
   lowerEvent: PolymarketEvent | null;
@@ -629,7 +637,18 @@ async function fetchHyperQuality() {
   };
 }
 
-async function fetchHyperCandles(startTime: number, endTime: number) {
+const normalizeHyperCandles = (candles: HyperCandle[]): ChartCandle[] =>
+  candles
+    .map((candle) => ({
+      time: candle.t,
+      open: Number(candle.o),
+      high: Number(candle.h),
+      low: Number(candle.l),
+      close: Number(candle.c)
+    }))
+    .filter((candle) => [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite));
+
+async function fetchHyperCandles(interval: ChartInterval, startTime: number, endTime: number) {
   const response = await fetch("/hyperliquid-info", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -637,7 +656,7 @@ async function fetchHyperCandles(startTime: number, endTime: number) {
       type: "candleSnapshot",
       req: {
         coin: HYPER_COIN,
-        interval: "1m",
+        interval,
         startTime,
         endTime
       }
@@ -709,8 +728,8 @@ async function fetchHistoricalPriceSeries(lower: MarketBracket[], upper: MarketB
   const startTs = Math.floor(polymarketStartMs / 1000);
   const endTs = Math.floor(endMs / 1000);
   const tokenIds = [...new Set([...lower, ...upper].map((row) => row.tokenId).filter(Boolean))];
-  const [hyperCandles, polymarketResult] = await Promise.all([
-    fetchHyperCandles(0, endMs),
+  const [hyperCandleEntries, polymarketResult] = await Promise.all([
+    Promise.all(CHART_INTERVALS.map(async (interval) => [interval.id, normalizeHyperCandles(await fetchHyperCandles(interval.id, 0, endMs))] as const)),
     Promise.all(tokenIds.map(async (tokenId) => [tokenId, await fetchPolymarketPriceHistory(tokenId, startTs, endTs)] as const))
       .then((histories) => ({ histories, error: null }))
       .catch((error: unknown) => ({
@@ -718,28 +737,19 @@ async function fetchHistoricalPriceSeries(lower: MarketBracket[], upper: MarketB
         error: error instanceof Error ? error.message : "Polymarket history unavailable"
       }))
   ]);
+  const candlesByInterval = Object.fromEntries(hyperCandleEntries) as ChartCandleMap;
   const hyperByTime = new Map<number, number>();
-  const candles = hyperCandles
-    .map((candle) => ({
-      time: candle.t,
-      open: Number(candle.o),
-      high: Number(candle.h),
-      low: Number(candle.l),
-      close: Number(candle.c)
-    }))
-    .filter((candle) => [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite));
-  hyperCandles.forEach((candle) => {
-    const close = Number(candle.c);
-    if (Number.isFinite(close)) hyperByTime.set(candle.t, close);
+  candlesByInterval["5m"].forEach((candle) => {
+    if (Number.isFinite(candle.close)) hyperByTime.set(candle.time, candle.close);
   });
   const pmPoints = polymarketResult.error ? [] : buildHistoricalPolymarketSeries(lower, upper, Object.fromEntries(polymarketResult.histories));
   return {
     points: pmPoints.map((point) => ({
       time: point.time,
       polymarket: point.value,
-      hyperliquid: hyperByTime.get(Math.floor(point.time / 60000) * 60000) ?? null
+      hyperliquid: hyperByTime.get(Math.floor(point.time / (5 * 60_000)) * 5 * 60_000) ?? null
     })),
-    candles,
+    candlesByInterval,
     polymarketError: polymarketResult.error
   };
 }
@@ -1058,24 +1068,6 @@ const aggregatePricePoints = (points: PricePoint[], intervalMs: number): PricePo
   return [...byTime.values()].sort((a, b) => a.time - b.time);
 };
 
-const aggregateCandles = (candles: ChartCandle[], intervalMs: number): ChartCandle[] => {
-  const buckets = new Map<number, ChartCandle>();
-  [...candles]
-    .sort((a, b) => a.time - b.time)
-    .forEach((candle) => {
-      const bucket = Math.floor(candle.time / intervalMs) * intervalMs;
-      const existing = buckets.get(bucket);
-      if (!existing) {
-        buckets.set(bucket, { ...candle, time: bucket });
-        return;
-      }
-      existing.high = Math.max(existing.high, candle.high);
-      existing.low = Math.min(existing.low, candle.low);
-      existing.close = candle.close;
-    });
-  return [...buckets.values()].sort((a, b) => a.time - b.time);
-};
-
 const toCandleData = (candles: ChartCandle[]): CandlestickData<UTCTimestamp>[] =>
   candles.map((candle) => ({
     time: Math.floor(candle.time / 1000) as UTCTimestamp,
@@ -1085,7 +1077,7 @@ const toCandleData = (candles: ChartCandle[]): CandlestickData<UTCTimestamp>[] =
     close: candle.close
   }));
 
-function PriceComparisonChart({ points, candles, historyStatus }: { points: PricePoint[]; candles: ChartCandle[]; historyStatus: string }) {
+function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { points: PricePoint[]; candlesByInterval: ChartCandleMap; historyStatus: string }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
@@ -1095,7 +1087,11 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const selectedInterval = CHART_INTERVALS.find((item) => item.id === interval) ?? CHART_INTERVALS[1];
   const displayPoints = React.useMemo(() => aggregatePricePoints(points, selectedInterval.ms), [points, selectedInterval.ms]);
-  const displayCandles = React.useMemo(() => aggregateCandles(candles, selectedInterval.ms), [candles, selectedInterval.ms]);
+  const displayCandles = React.useMemo(() => candlesByInterval[interval] ?? [], [candlesByInterval, interval]);
+  const hlHistoryStatus =
+    displayCandles.length > 0
+      ? `HL ${selectedInterval.label} returned range: ${formatLocalDateTime(displayCandles[0].time)} - ${formatLocalDateTime(displayCandles.at(-1)!.time)}`
+      : `HL ${selectedInterval.label} history unavailable`;
   const latest = displayPoints.at(-1);
 
   React.useEffect(() => {
@@ -1234,7 +1230,9 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
       </div>
       <div className="marketChart" ref={containerRef} />
       <div className="chartFooter">
-        <span>{historyStatus}</span>
+        <span>
+          {hlHistoryStatus} · {historyStatus}
+        </span>
         <span>
           {displayPoints.length} PM buckets · {displayCandles.length} HL {selectedInterval.label} candles
         </span>
@@ -1308,7 +1306,7 @@ function App() {
   const hoveredBracket = qualityRows.find((row) => row.id === hoveredBracketId) ?? qualityRows.find((row) => row.probability === maxProbability) ?? null;
   const [priceHistory, setPriceHistory] = React.useState<PricePoint[]>([]);
   const [historicalPriceHistory, setHistoricalPriceHistory] = React.useState<PricePoint[]>([]);
-  const [hyperCandleHistory, setHyperCandleHistory] = React.useState<ChartCandle[]>([]);
+  const [hyperCandleHistory, setHyperCandleHistory] = React.useState<ChartCandleMap>(emptyCandleMap);
   const [historyStatus, setHistoryStatus] = React.useState("Loading public chart history");
   const historyKey = React.useMemo(() => [...lower, ...upper].map((row) => row.tokenId).join(":"), [lower, upper]);
 
@@ -1329,34 +1327,26 @@ function App() {
     let cancelled = false;
     setHistoryStatus("Loading public chart history");
     fetchHistoricalPriceSeries(lower, upper)
-      .then(({ points, candles, polymarketError }) => {
+      .then(({ points, candlesByInterval, polymarketError }) => {
         if (cancelled) return;
         setHistoricalPriceHistory(points);
-        setHyperCandleHistory(candles);
+        setHyperCandleHistory(candlesByInterval);
         const pmFirst = points[0]?.time;
         const pmLast = points.at(-1)?.time;
-        const hlFirst = candles[0]?.time;
-        const hlLast = candles.at(-1)?.time;
-        if (hlFirst && hlLast && pmFirst && pmLast) {
-          setHistoryStatus(
-            `HL full available history: ${formatLocalDateTime(hlFirst)} - ${formatLocalDateTime(hlLast)} · PM reconstruction (${POLYMARKET_HISTORY_FIDELITY_MINUTES}m CLOB): ${formatLocalDateTime(pmFirst)} - ${formatLocalDateTime(pmLast)}`
-          );
-        } else if (hlFirst && hlLast) {
-          setHistoryStatus(
-            `HL full available history: ${formatLocalDateTime(hlFirst)} - ${formatLocalDateTime(hlLast)}${polymarketError ? ` · PM history unavailable: ${polymarketError}` : ""}`
-          );
-        } else if (pmFirst && pmLast) {
+        if (pmFirst && pmLast) {
           setHistoryStatus(
             `PM reconstruction loaded (${POLYMARKET_HISTORY_FIDELITY_MINUTES}m CLOB): ${formatLocalDateTime(pmFirst)} - ${formatLocalDateTime(pmLast)}`
           );
+        } else if (polymarketError) {
+          setHistoryStatus(`PM history unavailable: ${polymarketError}`);
         } else {
-          setHistoryStatus("No historical Polymarket/HL overlap found; showing live session");
+          setHistoryStatus("No historical Polymarket reconstruction found; showing live PM session");
         }
       })
       .catch((error) => {
         if (cancelled) return;
         setHistoricalPriceHistory([]);
-        setHyperCandleHistory([]);
+        setHyperCandleHistory(emptyCandleMap());
         setHistoryStatus(error instanceof Error ? `History unavailable: ${error.message}` : "History unavailable; showing live session");
       });
     return () => {
@@ -1446,7 +1436,7 @@ function App() {
       </section>
 
       <section className="workspace">
-        <PriceComparisonChart points={chartPoints} candles={hyperCandleHistory} historyStatus={historyStatus} />
+        <PriceComparisonChart points={chartPoints} candlesByInterval={hyperCandleHistory} historyStatus={historyStatus} />
 
         <aside className="panel methodologyPanel">
           <div className="panelHeader compact">
