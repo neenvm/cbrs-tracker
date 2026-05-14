@@ -111,6 +111,12 @@ type ShareBasis = {
   note: string;
 };
 
+type PricePoint = {
+  time: number;
+  polymarket: number;
+  hyperliquid: number | null;
+};
+
 type DashboardState = {
   lowerEvent: PolymarketEvent | null;
   upperEvent: PolymarketEvent | null;
@@ -673,8 +679,95 @@ function MeasureCell({ value, max, tone }: { value: number; max: number; tone: "
   );
 }
 
+function PriceComparisonChart({ points }: { points: PricePoint[] }) {
+  const width = 760;
+  const height = 260;
+  const padding = { top: 24, right: 28, bottom: 34, left: 54 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const values = points.flatMap((point) => [point.polymarket, point.hyperliquid]).filter((value): value is number => value != null && Number.isFinite(value));
+  const minValue = values.length ? Math.min(...values) : 0;
+  const maxValue = values.length ? Math.max(...values) : 1;
+  const range = Math.max(maxValue - minValue, 1);
+  const yMin = Math.max(minValue - range * 0.18, 0);
+  const yMax = maxValue + range * 0.18;
+  const yRange = Math.max(yMax - yMin, 1);
+  const xFor = (index: number) => padding.left + (points.length <= 1 ? chartWidth : (index / (points.length - 1)) * chartWidth);
+  const yFor = (value: number) => padding.top + (1 - (value - yMin) / yRange) * chartHeight;
+  const pathFor = (key: "polymarket" | "hyperliquid") =>
+    points
+      .map((point, index) => ({ value: point[key], x: xFor(index) }))
+      .filter((point): point is { value: number; x: number } => point.value != null && Number.isFinite(point.value))
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${yFor(point.value).toFixed(1)}`)
+      .join(" ");
+  const latest = points.at(-1);
+  const first = points[0];
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => yMin + yRange * ratio);
+
+  return (
+    <section className="panel priceChartPanel">
+      <div className="panelHeader">
+        <div>
+          <p>Live Chart</p>
+          <h2>Implied CBRS vs Hyperliquid</h2>
+        </div>
+        <span>{points.length > 1 && first ? `${new Date(first.time).toLocaleTimeString()} - ${new Date(latest!.time).toLocaleTimeString()}` : "Building history"}</span>
+      </div>
+      <div className="chartLegend">
+        <span className="legendItem pm">Polymarket implied</span>
+        <span className="legendItem hl">Hyperliquid</span>
+      </div>
+      <svg className="lineChart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Live line chart comparing Polymarket implied CBRS and Hyperliquid CBRS">
+        <defs>
+          <linearGradient id="pmGradient" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#8b5cf6" />
+            <stop offset="100%" stopColor="#06b6d4" />
+          </linearGradient>
+          <linearGradient id="hlGradient" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#f97316" />
+            <stop offset="100%" stopColor="#f43f5e" />
+          </linearGradient>
+        </defs>
+        {yTicks.map((tick) => {
+          const y = yFor(tick);
+          return (
+            <g key={tick}>
+              <line className="chartGridLine" x1={padding.left} x2={width - padding.right} y1={y} y2={y} />
+              <text className="chartTick" x={padding.left - 10} y={y + 4} textAnchor="end">
+                {formatUsd(tick, 0)}
+              </text>
+            </g>
+          );
+        })}
+        <line className="chartAxis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} />
+        {points.length > 1 ? (
+          <>
+            <path className="chartLine pmLine" d={pathFor("polymarket")} />
+            <path className="chartLine hlLine" d={pathFor("hyperliquid")} />
+          </>
+        ) : (
+          <text className="chartEmpty" x={width / 2} y={height / 2} textAnchor="middle">
+            Waiting for live samples
+          </text>
+        )}
+        {latest ? (
+          <>
+            <circle className="chartDot pmDot" cx={xFor(points.length - 1)} cy={yFor(latest.polymarket)} r="4.5" />
+            {latest.hyperliquid == null ? null : <circle className="chartDot hlDot" cx={xFor(points.length - 1)} cy={yFor(latest.hyperliquid)} r="4.5" />}
+          </>
+        ) : null}
+      </svg>
+      <div className="chartFooter">
+        <span>PM {latest ? formatUsd(latest.polymarket) : "n/a"}</span>
+        <span>HL {latest?.hyperliquid == null ? "n/a" : formatUsd(latest.hyperliquid)}</span>
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const data = useDashboardData();
+  const [hoveredBracketId, setHoveredBracketId] = React.useState<string | null>(null);
   const { lower, upper } = getBrackets(data.lowerEvent, data.upperEvent, data.polymarketMidpoints, data.polymarketDepth);
   const distribution = buildDistribution(lower, upper);
   const expectedCap = expectedMarketCap(distribution);
@@ -725,6 +818,21 @@ function App() {
     (data.upperEvent?.markets.find((market) => /not IPO before July/i.test(market.question))?.outcomePrices
       ? Number(parseJsonArray<string>(data.upperEvent.markets.find((market) => /not IPO before July/i.test(market.question))!.outcomePrices)[0])
       : null);
+  const hoveredBracket = qualityRows.find((row) => row.id === hoveredBracketId) ?? qualityRows.find((row) => row.probability === maxProbability) ?? null;
+  const [priceHistory, setPriceHistory] = React.useState<PricePoint[]>([]);
+
+  React.useEffect(() => {
+    if (!Number.isFinite(polymarketSharePrice) || polymarketSharePrice <= 0) return;
+    const now = Date.now();
+    setPriceHistory((current) => {
+      const point = { time: now, polymarket: polymarketSharePrice, hyperliquid: data.hyperPrice };
+      const previous = current.at(-1);
+      if (previous && now - previous.time < 2200) {
+        return [...current.slice(0, -1), point];
+      }
+      return [...current, point].slice(-90);
+    });
+  }, [polymarketSharePrice, data.hyperPrice]);
 
   return (
     <main>
@@ -732,7 +840,7 @@ function App() {
         <div>
           <div className="eyebrow">
             <Activity size={16} />
-            trade[XYZ] style · CBRS IPO price discovery
+            Live CBRS IPO price discovery
           </div>
           <h1>Cerebras market-cap implied share price</h1>
         </div>
@@ -802,30 +910,7 @@ function App() {
       </section>
 
       <section className="workspace">
-        <div className="panel chartPanel">
-          <div className="panelHeader">
-            <div>
-              <p>Normalized Distribution</p>
-              <h2>Closing market cap brackets</h2>
-            </div>
-            <span>{data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : "No update yet"}</span>
-          </div>
-          <div className="bars">
-            {distribution.map((row) => (
-              <div className="barRow" key={row.id}>
-                <div className="barLabel">{row.label}</div>
-                <div className="barTrack">
-                  <div className="barFill" style={{ width: `${Math.max((row.probability / maxProbability) * 100, 2)}%` }} />
-                </div>
-                <div className="barValue">{formatPercent(row.probability)}</div>
-              </div>
-            ))}
-          </div>
-          <p className="caption">
-            The definitive value is the expected market cap from this live blended distribution, divided by the official post-offering share count. The value
-            range assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B for quantile math.
-          </p>
-        </div>
+        <PriceComparisonChart points={priceHistory} />
 
         <aside className="panel methodologyPanel">
           <div className="panelHeader compact">
@@ -858,6 +943,73 @@ function App() {
             <span>IPOP price is a cash-settled per-share derivative. Their displayed FD share count is indicative only, so it is not used as a default.</span>
           </div>
         </aside>
+      </section>
+
+      <section className="workspace distributionWorkspace">
+        <div className="panel chartPanel">
+          <div className="panelHeader">
+            <div>
+              <p>Normalized Distribution</p>
+              <h2>Closing market cap brackets</h2>
+            </div>
+            <span>{data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : "No update yet"}</span>
+          </div>
+          <div className="bars">
+            {distribution.map((row) => (
+              <div
+                className={`barRow ${hoveredBracket?.id === row.id ? "active" : ""}`}
+                key={row.id}
+                onFocus={() => setHoveredBracketId(row.id)}
+                onMouseEnter={() => setHoveredBracketId(row.id)}
+                tabIndex={0}
+              >
+                <div className="barLabel">{row.label}</div>
+                <div className="barTrack">
+                  <div className="barFill" style={{ width: `${Math.max((row.probability / maxProbability) * 100, 2)}%` }} />
+                </div>
+                <div className="barValue">{formatPercent(row.probability)}</div>
+              </div>
+            ))}
+          </div>
+          {hoveredBracket ? (
+            <div className="strikeTooltip">
+              <div>
+                <span>Selected strike</span>
+                <strong>{hoveredBracket.label}</strong>
+              </div>
+              <div>
+                <span>Raw Yes / blended</span>
+                <strong>
+                  {formatPercent(hoveredBracket.yesPrice)} / {formatPercent(hoveredBracket.probability)}
+                </strong>
+              </div>
+              <div>
+                <span>Bid / ask</span>
+                <strong>
+                  {hoveredBracket.bid == null ? "n/a" : formatPercent(hoveredBracket.bid)} / {hoveredBracket.ask == null ? "n/a" : formatPercent(hoveredBracket.ask)}
+                </strong>
+              </div>
+              <div>
+                <span>2c depth</span>
+                <strong>{formatCompactUsd(hoveredBracket.depthTotal)}</strong>
+              </div>
+              <div>
+                <span>24h volume</span>
+                <strong>{formatCompactUsd(hoveredBracket.volume24h)}</strong>
+              </div>
+              <div>
+                <span>Liquidity / midpoint</span>
+                <strong>
+                  {formatCompactUsd(hoveredBracket.liquidity)} / {formatCompactUsd(hoveredBracket.midpoint)}
+                </strong>
+              </div>
+            </div>
+          ) : null}
+          <p className="caption">
+            The definitive value is the expected market cap from this live blended distribution, divided by the official post-offering share count. The value
+            range assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B for quantile math.
+          </p>
+        </div>
       </section>
 
       <section className="panel qualityPanel">
