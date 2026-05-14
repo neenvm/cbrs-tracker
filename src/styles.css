@@ -260,8 +260,21 @@ h1 {
 
 .rangeControls {
   display: inline-flex;
+  align-items: center;
   border: 1px solid var(--line);
   background: var(--paper-2);
+}
+
+.rangeControls span {
+  height: 30px;
+  padding: 8px 10px 0;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .rangeControls button {
@@ -628,6 +641,43 @@ h1 {
 .sourceBox strong {
   color: var(--blue);
   font-size: 0.84rem;
+}
+
+.marketRules {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.marketRules div {
+  display: grid;
+  gap: 4px;
+}
+
+.marketRules span {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.marketRules strong {
+  color: var(--ink);
+  font-size: 0.96rem;
+}
+
+.marketRules ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .qualityPanel,

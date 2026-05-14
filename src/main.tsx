@@ -152,13 +152,12 @@ type ChartCandle = {
   close: number;
 };
 
-type ChartRange = "15m" | "1h" | "6h" | "all";
+type ChartInterval = "5m" | "15m" | "1h";
 
-const CHART_RANGES: Array<{ id: ChartRange; label: string; ms: number | null }> = [
+const CHART_INTERVALS: Array<{ id: ChartInterval; label: string; ms: number }> = [
+  { id: "5m", label: "5m", ms: 5 * 60_000 },
   { id: "15m", label: "15m", ms: 15 * 60_000 },
-  { id: "1h", label: "1h", ms: 60 * 60_000 },
-  { id: "6h", label: "6h", ms: 6 * 60 * 60_000 },
-  { id: "all", label: "All", ms: null }
+  { id: "1h", label: "1h", ms: 60 * 60_000 }
 ];
 
 type DashboardState = {
@@ -271,6 +270,15 @@ const formatLocalTime = (value: number | Date) =>
   }).format(value);
 
 const formatLocalDateTime = (value: number | Date) =>
+  new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(value);
+
+const formatChartAxisTime = (value: number | Date) =>
   new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -974,16 +982,47 @@ function StrikePopover({
   );
 }
 
-const toLineData = (points: PricePoint[], key: "polymarket" | "hyperliquid"): LineData<UTCTimestamp>[] => {
+const aggregateLineData = (points: PricePoint[], key: "polymarket" | "hyperliquid", intervalMs: number): LineData<UTCTimestamp>[] => {
   const byTime = new Map<number, number>();
-  points.forEach((point) => {
-    const value = point[key];
-    if (value == null || !Number.isFinite(value)) return;
-    byTime.set(Math.floor(point.time / 1000), value);
-  });
+  [...points]
+    .sort((a, b) => a.time - b.time)
+    .forEach((point) => {
+      const value = point[key];
+      if (value == null || !Number.isFinite(value)) return;
+      byTime.set(Math.floor(point.time / intervalMs) * Math.floor(intervalMs / 1000), value);
+    });
   return [...byTime.entries()]
     .sort(([a], [b]) => a - b)
     .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
+};
+
+const aggregatePricePoints = (points: PricePoint[], intervalMs: number): PricePoint[] => {
+  const byTime = new Map<number, PricePoint>();
+  [...points]
+    .sort((a, b) => a.time - b.time)
+    .forEach((point) => {
+      const bucket = Math.floor(point.time / intervalMs) * intervalMs;
+      byTime.set(bucket, { time: bucket, polymarket: point.polymarket, hyperliquid: point.hyperliquid });
+    });
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
+};
+
+const aggregateCandles = (candles: ChartCandle[], intervalMs: number): ChartCandle[] => {
+  const buckets = new Map<number, ChartCandle>();
+  [...candles]
+    .sort((a, b) => a.time - b.time)
+    .forEach((candle) => {
+      const bucket = Math.floor(candle.time / intervalMs) * intervalMs;
+      const existing = buckets.get(bucket);
+      if (!existing) {
+        buckets.set(bucket, { ...candle, time: bucket });
+        return;
+      }
+      existing.high = Math.max(existing.high, candle.high);
+      existing.low = Math.min(existing.low, candle.low);
+      existing.close = candle.close;
+    });
+  return [...buckets.values()].sort((a, b) => a.time - b.time);
 };
 
 const toCandleData = (candles: ChartCandle[]): CandlestickData<UTCTimestamp>[] =>
@@ -1000,16 +1039,12 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
   const chartRef = React.useRef<IChartApi | null>(null);
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
   const hlSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const [range, setRange] = React.useState<ChartRange>("1h");
+  const [interval, setInterval] = React.useState<ChartInterval>("15m");
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
-  const latest = points.at(-1);
-  const selectedRange = CHART_RANGES.find((item) => item.id === range) ?? CHART_RANGES[1];
-  const latestLoadedTime = Math.max(points.at(-1)?.time ?? 0, candles.at(-1)?.time ?? 0);
-  const visibleCutoff = selectedRange.ms && latestLoadedTime ? latestLoadedTime - selectedRange.ms : null;
-  const visiblePoints = React.useMemo(() => {
-    if (!visibleCutoff || points.length === 0) return points;
-    return points.filter((point) => point.time >= visibleCutoff);
-  }, [points, visibleCutoff]);
+  const selectedInterval = CHART_INTERVALS.find((item) => item.id === interval) ?? CHART_INTERVALS[1];
+  const displayPoints = React.useMemo(() => aggregatePricePoints(points, selectedInterval.ms), [points, selectedInterval.ms]);
+  const displayCandles = React.useMemo(() => aggregateCandles(candles, selectedInterval.ms), [candles, selectedInterval.ms]);
+  const latest = displayPoints.at(-1);
 
   React.useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
@@ -1045,10 +1080,10 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
         borderColor: "rgba(82, 96, 120, 0.22)",
         timeVisible: true,
         secondsVisible: false,
-        tickMarkFormatter: (time: unknown) => formatLocalTime(Number(time) * 1000)
+        tickMarkFormatter: (time: unknown) => formatChartAxisTime(Number(time) * 1000)
       },
       localization: {
-        timeFormatter: (time: unknown) => formatLocalTime(Number(time) * 1000),
+        timeFormatter: (time: unknown) => formatChartAxisTime(Number(time) * 1000),
         priceFormatter: (price: number) => formatUsd(price, 2)
       },
       handleScale: false,
@@ -1099,14 +1134,14 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
   }, []);
 
   React.useEffect(() => {
-    const pmData = toLineData(visiblePoints, "polymarket");
-    const candleData = toCandleData(candles.filter((candle) => !visibleCutoff || candle.time >= visibleCutoff));
+    const pmData = aggregateLineData(points, "polymarket", selectedInterval.ms);
+    const candleData = toCandleData(displayCandles);
     pmSeriesRef.current?.setData(pmData);
     hlSeriesRef.current?.setData(candleData);
     if (pmData.length || candleData.length) {
       chartRef.current?.timeScale().fitContent();
     }
-  }, [visiblePoints, candles, visibleCutoff]);
+  }, [points, displayCandles, selectedInterval.ms]);
 
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
@@ -1116,11 +1151,12 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
       <div className="panelHeader chartHeader">
         <div>
           <p>Market Chart</p>
-          <h2>PM implied CBRS vs Hyperliquid</h2>
+          <h2>PM implied closing CBRS vs Hyperliquid</h2>
         </div>
-        <div className="rangeControls" aria-label="Chart time range">
-          {CHART_RANGES.map((item) => (
-            <button className={range === item.id ? "active" : ""} key={item.id} type="button" onClick={() => setRange(item.id)}>
+        <div className="rangeControls" aria-label="Candle interval">
+          <span>Candles</span>
+          {CHART_INTERVALS.map((item) => (
+            <button className={interval === item.id ? "active" : ""} key={item.id} type="button" onClick={() => setInterval(item.id)}>
               {item.label}
             </button>
           ))}
@@ -1130,12 +1166,14 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
         <span>PM {readout?.polymarket == null ? "n/a" : formatUsd(readout.polymarket)}</span>
         <span>HL candle {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
         <span>Spread {readoutSpread == null ? "n/a" : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)}`}</span>
-        <span>{readout?.time ? formatLocalTime(readout.time * 1000) : "Waiting for data"}</span>
+        <span>{readout?.time ? formatChartAxisTime(readout.time * 1000) : "Waiting for data"}</span>
       </div>
       <div className="marketChart" ref={containerRef} />
       <div className="chartFooter">
         <span>{historyStatus}</span>
-        <span>{visiblePoints.length} PM samples</span>
+        <span>
+          {displayPoints.length} PM buckets · {displayCandles.length} HL {selectedInterval.label} candles
+        </span>
       </div>
     </section>
   );
@@ -1264,7 +1302,7 @@ function App() {
             <Activity size={16} />
             Live CBRS IPO price discovery
           </div>
-          <h1>Cerebras market-cap implied share price</h1>
+          <h1>Cerebras implied closing share price</h1>
         </div>
         <div className="statusRow">
           <span className={`status ${data.polymarketStatus}`}>
@@ -1288,19 +1326,19 @@ function App() {
       <section className="metricsGrid">
         <MetricCard
           icon={<BarChart3 size={22} />}
-          label="Polymarket expected cap"
+          label="PM implied closing cap"
           value={expectedCap ? formatCompactUsd(expectedCap) : "Loading"}
           detail="Blended from both bracket pages"
         />
         <MetricCard
           icon={<Scale size={22} />}
-          label="Polymarket definitive CBRS"
+          label="PM implied closing CBRS"
           value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
           detail={`Expected value using official post-offering shares: ${(selectedBasis.shares / 1e6).toFixed(1)}m`}
         />
         <MetricCard
           icon={<Scale size={22} />}
-          label="Polymarket value range"
+          label="PM closing price range"
           value={expectedCap ? `${formatUsd(shareP25, 0)}-${formatUsd(shareP75, 0)}` : "Loading"}
           detail={`Central 50%; central 80% is ${formatUsd(shareP10, 0)}-${formatUsd(shareP90, 0)}`}
         />
@@ -1314,7 +1352,7 @@ function App() {
           icon={<Activity size={22} />}
           label="HL premium / discount"
           value={spread == null ? "Loading" : `${spread >= 0 ? "+" : ""}${formatUsd(spread)}`}
-          detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus Polymarket`}
+          detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus PM closing`}
           tone={spread == null ? "neutral" : spread >= 0 ? "positive" : "negative"}
         />
         <MetricCard
@@ -1342,9 +1380,9 @@ function App() {
             </div>
           </div>
           <div className="methodFormula">
-            <span>PM implied CBRS</span>
+            <span>PM implied closing CBRS</span>
             <strong>
-              E[market cap] / {new Intl.NumberFormat("en-US").format(OFFICIAL_POST_OFFERING_SHARES)} shares
+              E[first-day closing market cap] / {new Intl.NumberFormat("en-US").format(OFFICIAL_POST_OFFERING_SHARES)} shares
             </strong>
           </div>
           <p className="basisNote">
@@ -1400,11 +1438,11 @@ function App() {
             })}
           </div>
           <p className="caption">
-            The definitive value is the expected market cap from this live blended distribution, divided by the official post-offering share count. Historical
-            PM chart points are reconstructed from the highest-density accepted public CLOB Yes-token history ({POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute
-            fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no current prices are backfilled into historical
-            points. The value range assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B for
-            quantile math.
+            The definitive PM closing value is the expected first-day closing market cap from this live blended distribution, divided by the official
+            post-offering share count. Historical PM chart points are reconstructed from the highest-density accepted public CLOB Yes-token history (
+            {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no
+            current prices are backfilled into historical points. The value range assumes outcomes are uniformly distributed inside each bracket; the
+            open-ended {">= $100B"} bracket is capped at $110B for quantile math.
           </p>
         </div>
       </section>
@@ -1533,7 +1571,7 @@ function App() {
           <DetailItem label="Gross proceeds" value={formatCompactUsd(grossProceeds)} note={`${formatCompactUsd(grossProceedsWithOption)} if the option is fully exercised.`} />
           <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`${formatCompactUsd(officialIpoCapWithOption)} with over-allotment share count.`} />
           <DetailItem label="Offered float" value={formatPercent(offeredFloatPct)} note="Offered shares divided by post-offering shares before over-allotment." />
-          <DetailItem label="Polymarket vs offer" value={`${offerToPm >= 0 ? "+" : ""}${formatUsd(offerToPm)}`} note={`${offerToPm >= 0 ? "+" : ""}${formatPercent(offerToPm / IPO_OFFER_PRICE)} versus $185.`} />
+          <DetailItem label="PM closing vs offer" value={`${offerToPm >= 0 ? "+" : ""}${formatUsd(offerToPm)}`} note={`${offerToPm >= 0 ? "+" : ""}${formatPercent(offerToPm / IPO_OFFER_PRICE)} versus $185.`} />
           <DetailItem
             label="Hyperliquid vs offer"
             value={offerToHl == null ? "Loading" : `${offerToHl >= 0 ? "+" : ""}${formatUsd(offerToHl)}`}
@@ -1552,13 +1590,27 @@ function App() {
             feed during the latest check.
           </span>
         </div>
+        <div className="marketRules">
+          <div>
+            <span>Resolution Rules</span>
+            <strong>Polymarket closing market-cap basis</strong>
+          </div>
+          <ul>
+            <li>Resolves on Cerebras Systems' market capitalization at the official closing price on its first trading day.</li>
+            <li>Market cap is total outstanding shares times the official closing price of the publicly traded class, including other share classes and stated conversion ratios where needed.</li>
+            <li>Outstanding shares come from official company filings or disclosures; closing price comes from the primary exchange's official listing page.</li>
+            <li>If the value lands exactly between two brackets, the higher bracket resolves Yes.</li>
+            <li>If no IPO occurs by June 30, 2026 at 11:59 PM ET, the no-IPO-before-July market resolves Yes.</li>
+            <li>If trading is interrupted or abbreviated, the market uses the official close from that session; if none is published, it uses the next trading day with an official close.</li>
+          </ul>
+        </div>
       </section>
 
       <section className="panel tablePanel">
         <div className="panelHeader">
           <div>
             <p>Raw Inputs</p>
-            <h2>Polymarket bracket prices</h2>
+            <h2>Polymarket closing bracket prices</h2>
           </div>
           <span>
             Live CLOB/Gamma poll every {LIVE_REFRESH_MS / 1000}s · No-IPO upper market: {noIpoPrice == null ? "n/a" : formatPercent(noIpoPrice)}

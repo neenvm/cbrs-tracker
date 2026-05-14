@@ -6,13 +6,13 @@ A small live dashboard for comparing Cerebras (`CBRS`) IPO price discovery acros
 - Polymarket's Cerebras IPO closing market-cap bracket markets
 - Official Cerebras IPO share-count and pricing disclosures
 
-The goal is to translate Polymarket's expected closing market capitalization into an implied per-share CBRS value, then compare that value with the live Hyperliquid/trade[XYZ] per-share market.
+The goal is to translate Polymarket's expected first-day closing market capitalization into an implied first-day closing per-share CBRS value, then compare that value with the live Hyperliquid/trade[XYZ] per-share market.
 
 ## What It Shows
 
-- Polymarket-implied expected closing market cap
-- Polymarket-implied CBRS share price
-- Central Polymarket-implied value ranges
+- Polymarket-implied expected first-day closing market cap
+- Polymarket-implied first-day closing CBRS share price
+- Central Polymarket-implied closing value ranges
 - Live Hyperliquid `xyz:CBRS` price
 - Hyperliquid premium/discount versus Polymarket
 - Hyperliquid order-book depth
@@ -37,6 +37,10 @@ E[Polymarket closing market cap] / official post-offering shares
 The current official post-offering share count used by the app is `215,228,541`, based on `30.0m` offered Class A shares plus `185.228541m` Class B shares from the latest checked S-1/A context. Alternate official share-count views are shown only as methodology audit rows; they do not drive the headline comparison.
 
 For the chart, historical Polymarket-implied CBRS values are reconstructed from public CLOB Yes-token price history for every required bracket and `$50B` anchor market. The app uses the highest-density accepted public history shape currently observed for this endpoint: 14 days at 5-minute fidelity. A historical point is emitted only after all required Yes tokens have historical coverage; current live prices are not backfilled into old points.
+
+Chart controls select candle aggregation interval, not the visible date range. Hyperliquid candles and the Polymarket overlay are bucketed to the selected interval (`5m`, `15m`, or `1h`) while the x-axis displays local date plus 12-hour time.
+
+The app also summarizes the Polymarket resolution rules: the markets resolve on Cerebras' market capitalization at the official first-day closing price, using official company filings/disclosures for share count and the primary exchange official listing page for closing price. Exact boundary values resolve to the higher bracket, and if no IPO occurs by June 30, 2026 at 11:59 PM ET, the no-IPO-before-July market resolves Yes.
 
 ## Live Data Behavior
 
