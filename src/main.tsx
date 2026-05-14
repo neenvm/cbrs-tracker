@@ -1113,9 +1113,7 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
         horzLine: { color: "#6b7280", labelBackgroundColor: "#111827" }
       },
       rightPriceScale: {
-        visible: true,
-        borderColor: "rgba(82, 96, 120, 0.22)",
-        scaleMargins: { top: 0.16, bottom: 0.16 }
+        visible: false
       },
       leftPriceScale: {
         visible: true,
@@ -1152,7 +1150,7 @@ function PriceComparisonChart({ points, candles, historyStatus }: { points: Pric
       borderDownColor: "#bb3e3e",
       wickUpColor: "#17815e",
       wickDownColor: "#bb3e3e",
-      priceScaleId: "right",
+      priceScaleId: "left",
       lastValueVisible: true,
       title: "HL"
     });
