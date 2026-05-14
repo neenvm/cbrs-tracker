@@ -254,6 +254,9 @@ const formatMaybeUsd = (value: number | null | undefined, digits = 2) =>
 const formatMaybeCompactUsd = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "n/a" : formatCompactUsd(value);
 
+const formatMaybePercent = (value: number | null | undefined) =>
+  value == null || !Number.isFinite(value) ? "n/a" : formatPercent(value);
+
 const formatMaybeNumber = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
     ? "n/a"
@@ -1176,6 +1179,8 @@ function App() {
   const hyperBidDepth = hyperBidLevels.reduce((sum, level) => sum + level.notional, 0);
   const hyperAskDepth = hyperAskLevels.reduce((sum, level) => sum + level.notional, 0);
   const hyperBookMax = Math.max(...hyperBidLevels.map((level) => level.notional), ...hyperAskLevels.map((level) => level.notional), 1);
+  const hyperBboSpreadPct =
+    data.hyperQuality?.spread != null && hyperMidForDepth != null && hyperMidForDepth > 0 ? data.hyperQuality.spread / hyperMidForDepth : null;
   const selectedBasis = SHARE_BASES[0];
   const polymarketSharePrice = expectedCap / selectedBasis.shares;
   const shareP10 = capP10 / selectedBasis.shares;
@@ -1418,7 +1423,9 @@ function App() {
             <strong>
               {formatMaybeUsd(data.hyperQuality?.bestBid)} / {formatMaybeUsd(data.hyperQuality?.bestAsk)}
             </strong>
-            <small>Spread {formatMaybeUsd(data.hyperQuality?.spread, 2)}</small>
+            <small>
+              Spread {formatMaybeUsd(data.hyperQuality?.spread, 2)} / {formatMaybePercent(hyperBboSpreadPct)}
+            </small>
           </div>
           <div>
             <span>Hyperliquid mark / oracle</span>
@@ -1442,7 +1449,9 @@ function App() {
           <div className="depthCard">
             <div className="depthHeader">
               <strong>Hyperliquid depth ladder</strong>
-              <span>Spread {formatMaybeUsd(data.hyperQuality?.spread, 2)} · window {(hyperDepthPct * 100).toFixed(2)}%</span>
+              <span>
+                Spread {formatMaybeUsd(data.hyperQuality?.spread, 2)} / {formatMaybePercent(hyperBboSpreadPct)} · window {(hyperDepthPct * 100).toFixed(2)}%
+              </span>
             </div>
             <div className="depthControls" aria-label="Hyperliquid depth window">
               {[0.0025, 0.005, 0.01, 0.02].map((value) => (
