@@ -555,7 +555,7 @@ const deriveRobustYesPrice = ({
   priceConfidence: PriceConfidence;
 } => {
   const quote = finiteOrNull(quoteMidpoint);
-  const reference = finiteOrNull(last) ?? finiteOrNull(gammaPrice);
+  const reference = finiteOrNull(gammaPrice) ?? finiteOrNull(last);
   const spread = bestBid != null && bestAsk != null ? bestAsk - bestBid : null;
 
   if (quote == null) {
@@ -564,7 +564,7 @@ const deriveRobustYesPrice = ({
       quoteMidpoint: null,
       referencePrice: reference,
       quoteWeight: 0,
-      priceBasis: "last trade / Gamma fallback",
+      priceBasis: "Gamma / last trade fallback",
       priceConfidence: "low" as const
     };
   }
@@ -2337,8 +2337,8 @@ function App() {
             <strong>PM price treatment</strong>
             <span>
               The headline uses a robust quote/trade blend: tight, deep books follow the live midpoint; shallow, wide, or trade-divergent quotes are damped
-              toward the latest trade/Gamma price. Wide spreads are hit hard: &gt;=20c spread gives quote max 12%, &gt;=12c max 20%, &gt;=8c max
-              30%, &gt;=5c max 50%.
+              toward the current Gamma price, with last trade only as a fallback. Wide spreads are hit hard: &gt;=20c spread gives quote max 12%, &gt;=12c max
+              20%, &gt;=8c max 30%, &gt;=5c max 50%.
             </span>
           </div>
           <div className="sourceBox">
@@ -2528,7 +2528,8 @@ function App() {
           <p className="caption">
             The definitive PM closing value is the expected first-day closing market cap from a robust live distribution, divided by the official
             post-offering share count. Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
-            the latest trade/Gamma price so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart points are reconstructed from the
+            the current Gamma price, falling back to last trade only if needed, so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart
+            points are reconstructed from the
             highest-density accepted public CLOB Yes-token history (
             {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no
             current prices are backfilled into historical points. Polymarket buckets are coarse: each $10B market-cap bracket is about{" "}
