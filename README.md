@@ -53,6 +53,12 @@ Polymarket:
 
 The app uses no private API keys.
 
+## Privacy
+
+The local setup instructions are for any user who clones the repo. Running the app does not read local files, wallet data, browser cookies, environment variables, or private account data. It only requests public market data from Polymarket and Hyperliquid/trade[XYZ] through the local Vite dev server proxy.
+
+Those public API providers may still receive ordinary network metadata from whoever runs the app, such as IP address and user agent. The repo itself does not include telemetry, analytics, secrets, or user-specific data.
+
 ## Caveats
 
 - This is an informational market-monitoring tool, not investment advice.
