@@ -586,7 +586,7 @@ const deriveRobustYesPrice = ({
   const divergencePenalty = clamp(Math.abs(quote - reference) / 0.08);
   const rawQuoteWeight = clamp(0.18 + spreadScore * 0.42 + depthScore * 0.3 - divergencePenalty * 0.2, 0.15, 0.85);
   const spreadCap =
-    spread == null ? 0.5 : spread >= 0.2 ? 0.22 : spread >= 0.12 ? 0.28 : spread >= 0.08 ? 0.4 : spread >= 0.05 ? 0.62 : 0.85;
+    spread == null ? 0.42 : spread >= 0.2 ? 0.12 : spread >= 0.12 ? 0.2 : spread >= 0.08 ? 0.3 : spread >= 0.05 ? 0.5 : 0.85;
   const depthCap = nearTouchDepth < 10 ? 0.22 : nearTouchDepth < 50 ? 0.36 : nearTouchDepth < 100 ? 0.55 : 0.85;
   const quoteWeight = clamp(Math.min(rawQuoteWeight, spreadCap, depthCap), 0.15, 0.85);
   const yesPrice = clamp(quote * quoteWeight + reference * (1 - quoteWeight));
