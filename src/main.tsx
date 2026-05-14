@@ -24,6 +24,10 @@ type PolymarketEvent = {
   volume24hr?: string | number | null;
   liquidity?: string | number | null;
   liquidityClob?: string | number | null;
+  active?: boolean | null;
+  closed?: boolean | null;
+  archived?: boolean | null;
+  endDate?: string | null;
   markets: PolymarketMarket[];
 };
 
@@ -43,6 +47,11 @@ type PolymarketMarket = {
   volumeClob: number | null;
   liquidityNum: number | null;
   liquidityClob: number | null;
+  active?: boolean | null;
+  closed?: boolean | null;
+  archived?: boolean | null;
+  acceptingOrders?: boolean | null;
+  endDate?: string | null;
 };
 
 type BookLevel = {
@@ -517,6 +526,12 @@ const eventNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const isPolymarketMarketClosed = (market: PolymarketMarket) =>
+  market.closed === true || market.acceptingOrders === false || market.active === false || market.archived === true;
+
+const isPolymarketEventClosed = (event: PolymarketEvent | null) =>
+  event?.closed === true || event?.active === false || event?.archived === true || (event?.markets?.length ? event.markets.every(isPolymarketMarketClosed) : false);
+
 const deriveRobustYesPrice = ({
   quoteMidpoint,
   bestBid,
@@ -598,16 +613,17 @@ const marketToBracket = (
   const yesIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
   const tokenId = tokens[yesIndex] ?? "";
   const bookDepth = depth[tokenId];
-  const bid = bookDepth?.bestBid ?? market.bestBid;
-  const ask = bookDepth?.bestAsk ?? market.bestAsk;
-  const quoteMidpoint = finiteOrNull(midpoints[tokenId]) ?? (bid != null && ask != null ? (bid + ask) / 2 : null);
+  const isClosed = isPolymarketMarketClosed(market);
+  const bid = isClosed ? null : bookDepth?.bestBid ?? market.bestBid;
+  const ask = isClosed ? null : bookDepth?.bestAsk ?? market.bestAsk;
+  const quoteMidpoint = isClosed ? null : finiteOrNull(midpoints[tokenId]) ?? (bid != null && ask != null ? (bid + ask) / 2 : null);
   const robustPrice = deriveRobustYesPrice({
     quoteMidpoint,
     bestBid: bid,
     bestAsk: ask,
     last: market.lastTradePrice,
     gammaPrice: prices[yesIndex],
-    nearTouchDepth: (bookDepth?.bidDepth2c ?? 0) + (bookDepth?.askDepth2c ?? 0)
+    nearTouchDepth: isClosed ? 0 : (bookDepth?.bidDepth2c ?? 0) + (bookDepth?.askDepth2c ?? 0)
   });
   return {
     id: `${source}-${market.slug}`,
@@ -1971,6 +1987,17 @@ function App() {
   const pmLiquidity =
     eventNumber(data.lowerEvent?.liquidityClob ?? data.lowerEvent?.liquidity) +
       eventNumber(data.upperEvent?.liquidityClob ?? data.upperEvent?.liquidity) || allBrackets.reduce((sum, row) => sum + row.liquidity, 0);
+  const polymarketClosed = isPolymarketEventClosed(data.lowerEvent) && isPolymarketEventClosed(data.upperEvent);
+  const polymarketAcceptingOrders = [data.lowerEvent, data.upperEvent].some((event) =>
+    event?.markets?.some((market) => !isPolymarketMarketClosed(market) && market.acceptingOrders !== false)
+  );
+  const polymarketStatusLabel = polymarketClosed
+    ? "closed"
+    : polymarketAcceptingOrders
+      ? data.polymarketStreamStatus === "streaming"
+        ? "streaming"
+        : data.polymarketStatus
+      : "finalizing";
   const qualityRows = distribution.map((row) => {
     const depth = data.polymarketDepth[row.tokenId];
     return {
@@ -2128,10 +2155,10 @@ function App() {
           </a>
         </div>
         <div className="statusRow">
-	          <span className={`status ${data.polymarketStatus}`}>
-	            <Wifi size={14} />
-	            Polymarket {data.polymarketStreamStatus === "streaming" ? "streaming" : data.polymarketStatus}
-	          </span>
+          <span className={`status ${polymarketClosed ? "closed" : data.polymarketStatus}`}>
+            <Wifi size={14} />
+            Polymarket {polymarketStatusLabel}
+          </span>
           <span className={`status ${data.hyperStatus}`}>
             <RefreshCw size={14} />
             Hyperliquid {data.hyperStatus}
@@ -2143,6 +2170,14 @@ function App() {
         <div className="notice">
           <AlertTriangle size={18} />
           {data.error}
+        </div>
+      ) : null}
+
+      {polymarketClosed ? (
+        <div className="notice">
+          <AlertTriangle size={18} />
+          Polymarket markets are closed or no longer accepting orders. The PM estimate now ignores stale order books and uses final/resolution fields or latest
+          trade/Gamma prices until settlement is fully reflected.
         </div>
       ) : null}
 
