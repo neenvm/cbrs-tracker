@@ -233,6 +233,7 @@ h1 {
 
 .distributionWorkspace .chartPanel {
   grid-column: 1 / -1;
+  overflow: visible;
 }
 
 .panel {
@@ -494,9 +495,12 @@ h1 {
   display: grid;
   gap: 6px;
   position: relative;
+  z-index: 30;
 }
 
 .distributionLens {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 8px;
   margin-top: 12px;
@@ -825,7 +829,7 @@ h1 {
 .barRow:hover,
 .barRow:focus,
 .barRow.active {
-  z-index: 5;
+  z-index: 60;
 }
 
 .barLabel,
@@ -888,7 +892,7 @@ h1 {
   position: absolute;
   top: 50%;
   right: 12px;
-  z-index: 20;
+  z-index: 100;
   display: none;
   width: 460px;
   transform: translateY(-50%);
