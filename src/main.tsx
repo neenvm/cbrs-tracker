@@ -1700,6 +1700,7 @@ function App() {
   const offerToPm = polymarketSharePrice - IPO_OFFER_PRICE;
   const offerToHl = data.hyperPrice == null ? null : data.hyperPrice - IPO_OFFER_PRICE;
   const officialIpoCap = IPO_OFFER_PRICE * OFFICIAL_POST_OFFERING_SHARES;
+  const hyperImpliedCap = data.hyperPrice == null ? null : data.hyperPrice * OFFICIAL_POST_OFFERING_SHARES;
   const officialIpoCapWithOption = IPO_OFFER_PRICE * OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES;
   const grossProceeds = IPO_OFFER_PRICE * IPO_OFFERED_SHARES;
   const grossProceedsWithOption = IPO_OFFER_PRICE * (IPO_OFFERED_SHARES + IPO_OVERALLOTMENT_SHARES);
@@ -1855,9 +1856,15 @@ function App() {
         />
         <MetricCard
           icon={<CircleDollarSign size={22} />}
-          label="HL 24h notional"
-          value={formatMaybeCompactUsd(data.hyperQuality?.dayVolume)}
-          detail={`${formatMaybeNumber(data.hyperQuality?.dayBaseVolume)} CBRS base volume`}
+          label="HL implied cap"
+          value={hyperImpliedCap == null ? "Loading" : formatCompactUsd(hyperImpliedCap)}
+          detail={
+            hyperImpliedCap == null || data.hyperPrice == null
+              ? "Hyperliquid price x 215.2m official shares"
+              : `${formatUsd(data.hyperPrice)} x 215.2m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
+                  (hyperImpliedCap - officialIpoCap) / officialIpoCap
+                )} vs IPO cap`
+          }
         />
       </section>
 
