@@ -80,6 +80,22 @@ h1 {
   letter-spacing: 0;
 }
 
+.byline {
+  display: inline-block;
+  margin-top: 8px;
+  color: rgba(82, 91, 105, 0.58);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.byline:hover {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .statusRow {
   display: flex;
   flex-wrap: wrap;
