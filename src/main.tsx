@@ -2324,7 +2324,8 @@ function App() {
             <strong>PM price treatment</strong>
             <span>
               The headline uses a robust quote/trade blend: tight, deep books follow the live midpoint; shallow, wide, or trade-divergent quotes are damped
-              toward the latest trade/Gamma price to reduce spoof risk.
+              toward the latest trade/Gamma price. Wide spreads are hit hard: &gt;=20c spread gives quote max 12%, &gt;=12c max 20%, &gt;=8c max
+              30%, &gt;=5c max 50%.
             </span>
           </div>
           <div className="sourceBox">
