@@ -354,6 +354,15 @@ const formatMaybeNumber = (value: number | null | undefined) =>
 
 const formatSignedCompactUsd = (value: number) => `${value >= 0 ? "+" : ""}${formatCompactUsd(value)}`;
 
+const hyperOiNotional = (quality: HyperQuality | null | undefined, fallbackPrice?: number | null) => {
+  const oi = quality?.openInterest;
+  const price = quality?.oraclePrice ?? quality?.markPrice ?? fallbackPrice;
+  return oi != null && Number.isFinite(oi) && price != null && Number.isFinite(price) ? oi * price : null;
+};
+
+const annualizedHyperFunding = (fundingRate: number | null | undefined) =>
+  fundingRate == null || !Number.isFinite(fundingRate) ? null : fundingRate * 24 * 365;
+
 const shortAddress = (value: string | null | undefined) => (value ? `${value.slice(0, 6)}...${value.slice(-4)}` : "n/a");
 
 const polymarketProfileHref = (wallet: string | null | undefined) => {
@@ -1734,6 +1743,8 @@ function PriceComparisonChart({
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
   const readoutSpreadPct = readoutSpread != null && readout?.polymarket ? readoutSpread / readout.polymarket : null;
+  const chartOiNotional = hyperOiNotional(hyperQuality, readout?.hyperliquid);
+  const chartAnnualizedFunding = annualizedHyperFunding(hyperQuality?.fundingRate);
 
   return (
     <section className="panel priceChartPanel">
@@ -1755,8 +1766,6 @@ function PriceComparisonChart({
         </div>
       </div>
       <div className="chartReadout">
-        <span>PM {readout?.polymarket == null ? "n/a" : formatUsd(readout.polymarket)}</span>
-        <span>HL candle {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
         <span>
           Spread{" "}
           {readoutSpread == null
@@ -1764,8 +1773,16 @@ function PriceComparisonChart({
             : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)} / ${readoutSpreadPct == null ? "n/a" : formatSignedPercent(readoutSpreadPct)}`}
         </span>
         <span>HL 24h vol {formatMaybeCompactUsd(hyperQuality?.dayVolume)}</span>
-        <span>HL OI {formatMaybeNumber(hyperQuality?.openInterest)}</span>
-        <span>HL funding {formatMaybeFundingRate(hyperQuality?.fundingRate)}</span>
+        <span>
+          HL OI {formatMaybeCompactUsd(chartOiNotional)}
+          <small>{formatMaybeNumber(hyperQuality?.openInterest)} CBRS</small>
+        </span>
+        <span
+          className="tooltipChip"
+          data-tooltip={`Annualized: ${formatMaybePercent(chartAnnualizedFunding)}. Hyperliquid funding is hourly; annualized = current hourly rate x 24 x 365.`}
+        >
+          HL funding {formatMaybeFundingRate(hyperQuality?.fundingRate)}
+        </span>
         <span>{readout?.time ? formatChartAxisTime(readout.time * 1000) : "Waiting for data"}</span>
       </div>
       <div className="marketChart" ref={containerRef} />
@@ -1845,6 +1862,8 @@ function App() {
   const hyperBookMax = Math.max(...hyperBidLevels.map((level) => level.notional), ...hyperAskLevels.map((level) => level.notional), 1);
   const hyperBboSpreadPct =
     data.hyperQuality?.spread != null && hyperMidForDepth != null && hyperMidForDepth > 0 ? data.hyperQuality.spread / hyperMidForDepth : null;
+  const hyperOpenInterestNotional = hyperOiNotional(data.hyperQuality, hyperMidForDepth);
+  const hyperAnnualizedFunding = annualizedHyperFunding(data.hyperQuality?.fundingRate);
   const selectedBasis = SHARE_BASES[0];
   const polymarketSharePrice = expectedCap / selectedBasis.shares;
   const shareP10 = capP10 / selectedBasis.shares;
@@ -2221,13 +2240,15 @@ function App() {
           </div>
           <div>
             <span>Hyperliquid open interest</span>
-            <strong>{formatMaybeNumber(data.hyperQuality?.openInterest)}</strong>
-            <small>Contracts from Hyperliquid asset context</small>
+            <strong>{formatMaybeCompactUsd(hyperOpenInterestNotional)}</strong>
+            <small>{formatMaybeNumber(data.hyperQuality?.openInterest)} CBRS contracts</small>
           </div>
           <div>
             <span>Hyperliquid funding</span>
-            <strong>{formatMaybeFundingRate(data.hyperQuality?.fundingRate)}</strong>
-            <small>Current funding field from Hyperliquid asset context</small>
+            <strong className="tooltipText" data-tooltip={`Annualized: ${formatMaybePercent(hyperAnnualizedFunding)}. Hyperliquid funding is hourly; annualized = current hourly rate x 24 x 365.`}>
+              {formatMaybeFundingRate(data.hyperQuality?.fundingRate)}
+            </strong>
+            <small>{formatMaybePercent(hyperAnnualizedFunding)} annualized</small>
           </div>
           <div>
             <span>Polymarket combined 24h</span>

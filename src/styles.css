@@ -334,6 +334,54 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+.chartReadout span {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.chartReadout small {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.tooltipChip,
+.tooltipText {
+  position: relative;
+  cursor: help;
+}
+
+.tooltipChip::after,
+.tooltipText::after {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 9px;
+  border: 1px solid var(--line-strong);
+  background: var(--ink);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: normal;
+}
+
+.tooltipChip:hover::after,
+.tooltipChip:focus-visible::after,
+.tooltipText:hover::after,
+.tooltipText:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .marketChart {
   width: 100%;
   height: 460px;
