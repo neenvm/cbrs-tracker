@@ -2007,12 +2007,12 @@ function App() {
         />
         <MetricCard
           icon={<Scale size={22} />}
-          label="PM closing price range"
-          value={expectedCap ? `${formatUsd(shareP25, 0)}-${formatUsd(shareP75, 0)}` : "Loading"}
+          label="Most likely PM bracket"
+          value={topProbabilityRow ? topProbabilityRow.label : "Loading"}
           detail={
-            expectedCap
-              ? `Central 50%; vs IPO ${formatSignedUsd(shareP25 - IPO_OFFER_PRICE, 0)} to ${formatSignedUsd(shareP75 - IPO_OFFER_PRICE, 0)}`
-              : `Central 50%; central 80% is ${formatUsd(shareP10, 0)}-${formatUsd(shareP90, 0)}`
+            topProbabilityRow
+              ? `${formatPercent(topProbabilityRow.probability)} probability · implied close ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}`
+              : "Highest probability bucket from live PM distribution"
           }
         />
         <MetricCard
@@ -2202,8 +2202,9 @@ function App() {
             the latest trade/Gamma price so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart points are reconstructed from the
             highest-density accepted public CLOB Yes-token history (
             {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no
-            current prices are backfilled into historical points. The value range assumes outcomes are uniformly distributed inside each bracket; the
-            open-ended {">= $100B"} bracket is capped at $110B for quantile math.
+            current prices are backfilled into historical points. The central 50% range is kept as an audit view, not a top-line signal, because PM buckets are
+            coarse: each $10B market-cap bracket is about {formatUsd(10e9 / OFFICIAL_POST_OFFERING_SHARES, 2)} wide per CBRS share. Quantile math assumes outcomes
+            are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B.
           </p>
         </div>
       </section>
