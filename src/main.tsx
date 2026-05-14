@@ -2256,28 +2256,41 @@ function App() {
 
           <div className="quoteFeed">
             <div className="depthHeader">
-              <strong>Live quote changes</strong>
-              <span>These can move PM implied without a trade print</span>
+              <strong>Order-book moves</strong>
+              <span>Best bid/ask changes that can move PM before a trade prints</span>
+            </div>
+            <div className="tapeExplainer">
+              <span>Shows the live Yes-token book for each bracket</span>
+              <span>Midpoint is best bid/ask center</span>
+              <span>No matched trade required</span>
             </div>
             <div className="quoteRows">
-              {annotatedQuoteChanges.slice(0, 12).map((change) => (
-                <div className={`quoteRow ${change.delta == null || change.delta >= 0 ? "up" : "down"}`} key={quoteChangeKey(change)}>
-                  <div>
-                    <span className="tradeTime">{formatLocalTime(change.timestamp * 1000)}</span>
-                    <strong>{change.bracketLabel}</strong>
-                    <em>{change.impliedPriceRange}</em>
+              {annotatedQuoteChanges.slice(0, 24).map((change) => {
+                const direction = change.delta == null ? "new" : change.delta >= 0 ? "up" : "down";
+                return (
+                  <div className={`quoteRow ${direction === "down" ? "down" : "up"}`} key={quoteChangeKey(change)}>
+                    <div className="quoteMain">
+                      <span className="tradeTime">{formatLocalTime(change.timestamp * 1000)}</span>
+                      <strong>{change.bracketLabel}</strong>
+                      <em>{change.impliedPriceRange}</em>
+                    </div>
+                    <div className="quoteImpact">
+                      <span>{direction === "new" ? "New book quote" : `PM input moved ${direction}`}</span>
+                      <b>{formatPercent(change.midpoint)}</b>
+                      <small>{change.delta == null ? "First quote seen" : `${formatSignedPercent(change.delta)} midpoint move`}</small>
+                    </div>
+                    <div className="quoteBook">
+                      <span>Best bid / ask</span>
+                      <b>
+                        {change.bestBid == null ? "n/a" : formatPercent(change.bestBid)} / {change.bestAsk == null ? "n/a" : formatPercent(change.bestAsk)}
+                      </b>
+                      <small>Book update, not necessarily a trade</small>
+                    </div>
                   </div>
-                  <div>
-                    <b>{formatPercent(change.midpoint)}</b>
-                    <small>
-                      {change.delta == null ? "new quote" : `${formatSignedPercent(change.delta)} midpoint`} · bid/ask{" "}
-                      {change.bestBid == null ? "n/a" : formatPercent(change.bestBid)} / {change.bestAsk == null ? "n/a" : formatPercent(change.bestAsk)}
-                    </small>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {annotatedQuoteChanges.length === 0 ? (
-                <p className="emptyState">No quote changes observed yet. When best bid/ask moves, PM implied can update here before any matched trade appears.</p>
+                <p className="emptyState">No order-book moves observed yet. When best bid/ask moves, PM implied can update here before any matched trade appears.</p>
               ) : null}
             </div>
           </div>
@@ -2288,6 +2301,11 @@ function App() {
               <span>
                 Scrollable tape · large prints at least {formatCompactUsd(largeTradeCutoff)} · biggest {largestTrade ? formatCompactUsd(largestTrade.notional) : "n/a"}
               </span>
+            </div>
+            <div className="tapeExplainer">
+              <span>Shows matched Polymarket trades</span>
+              <span>Large prints are highlighted</span>
+              <span>Wallet labels appear when the Data API catches up</span>
             </div>
             <div className="tradeRows">
               {annotatedTrades.slice(0, 30).map((trade) => {
@@ -2331,8 +2349,9 @@ function App() {
           </div>
         </div>
         <p className="caption">
-          Buying pressure means BUY Yes or SELL No, which pushes that bracket's probability higher. Selling pressure means SELL Yes or BUY No, which pushes it lower.
-          Live CLOB trade events are fastest but do not include wallets; wallet-linked rows come from the Data API as soon as it updates.
+          Order-book moves explain quote-driven PM changes; the trade feed explains matched trades. Buying pressure means BUY Yes or SELL No, which pushes that
+          bracket's probability higher. Selling pressure means SELL Yes or BUY No, which pushes it lower. Live CLOB trade events are fastest but do not include
+          wallets; wallet-linked rows come from the Data API as soon as it updates.
         </p>
       </section>
 

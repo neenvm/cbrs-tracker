@@ -942,19 +942,29 @@ h1 {
 
 .tradeMonitorGrid {
   display: grid;
-  grid-template-columns: minmax(240px, 0.62fr) minmax(280px, 0.9fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(240px, 0.58fr) minmax(360px, 1fr) minmax(420px, 1.15fr);
   gap: 8px;
+  align-items: stretch;
 }
 
 .tradePressure,
 .quoteFeed,
 .tradeFeed {
   display: grid;
-  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
   gap: 9px;
   padding: 10px;
   border: 1px solid var(--line);
   background: var(--paper-2);
+}
+
+.quoteFeed {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.tradeFeed {
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .pressureRows,
@@ -964,22 +974,29 @@ h1 {
   gap: 6px;
 }
 
+.quoteRows,
 .tradeRows {
-  max-height: 430px;
+  min-height: 520px;
+  max-height: min(68vh, 680px);
   overflow-y: auto;
   padding-right: 4px;
   align-content: start;
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
 }
 
+.quoteRows::-webkit-scrollbar,
 .tradeRows::-webkit-scrollbar {
   width: 9px;
 }
 
+.quoteRows::-webkit-scrollbar-track,
 .tradeRows::-webkit-scrollbar-track {
   background: #ece5da;
   border-left: 1px solid var(--line);
 }
 
+.quoteRows::-webkit-scrollbar-thumb,
 .tradeRows::-webkit-scrollbar-thumb {
   background: #8a8174;
   border: 2px solid #ece5da;
@@ -1047,9 +1064,24 @@ h1 {
   background: var(--red);
 }
 
+.tapeExplainer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tapeExplainer span {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: #5d6674;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  padding: 6px 7px;
+}
+
 .quoteRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(128px, 0.58fr);
+  grid-template-columns: minmax(0, 0.95fr) minmax(132px, 0.7fr) minmax(148px, 0.78fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -1064,10 +1096,17 @@ h1 {
   border-left-color: var(--red);
 }
 
-.quoteRow div {
+.quoteMain,
+.quoteImpact,
+.quoteBook {
   display: grid;
   gap: 3px;
   min-width: 0;
+}
+
+.quoteImpact,
+.quoteBook {
+  text-align: right;
 }
 
 .pressureRow strong,
@@ -1079,6 +1118,14 @@ h1 {
   font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
+}
+
+.quoteImpact > span,
+.quoteBook > span {
+  color: #6c7482;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .pressureRow span,
@@ -1284,11 +1331,27 @@ tbody tr:hover {
 	  .detailGrid,
 	  .depthVisuals,
 	  .tradeMonitorGrid,
+	  .quoteRow,
 	  .tradeRow {
 	    grid-template-columns: 1fr;
 	  }
 
+  .tapeExplainer {
+    grid-template-columns: 1fr;
+  }
+
+  .quoteRows,
+  .tradeRows {
+    min-height: 360px;
+    max-height: 520px;
+  }
+
   .tradeWallet {
+    text-align: left;
+  }
+
+  .quoteImpact,
+  .quoteBook {
     text-align: left;
   }
 
