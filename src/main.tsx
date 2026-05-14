@@ -2393,6 +2393,17 @@ function App() {
         />
         <MetricCard
           icon={<Activity size={22} />}
+          label="PM prob close > HL"
+          value={probabilityAboveHl == null ? "Loading" : formatPercent(probabilityAboveHl)}
+          detail={
+            data.hyperPrice == null
+              ? "Waiting for live Hyperliquid price"
+              : `PM distribution above live HL ${formatUsd(data.hyperPrice)}; interpolated inside bracket`
+          }
+          tone={probabilityAboveHl == null ? "neutral" : probabilityAboveHl >= 0.5 ? "positive" : "negative"}
+        />
+        <MetricCard
+          icon={<Activity size={22} />}
           label="HL premium / discount"
           value={spread == null ? "Loading" : `${spread >= 0 ? "+" : ""}${formatUsd(spread)}`}
           detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus PM closing`}
