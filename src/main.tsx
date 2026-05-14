@@ -1,5 +1,6 @@
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { ColorType, CrosshairMode, LineSeries, createChart, type IChartApi, type ISeriesApi, type LineData, type UTCTimestamp } from "lightweight-charts";
 import { Activity, AlertTriangle, BarChart3, CircleDollarSign, RefreshCw, Scale, Wifi } from "lucide-react";
 import "./styles.css";
 
@@ -116,6 +117,15 @@ type PricePoint = {
   polymarket: number;
   hyperliquid: number | null;
 };
+
+type ChartRange = "1m" | "5m" | "15m" | "all";
+
+const CHART_RANGES: Array<{ id: ChartRange; label: string; ms: number | null }> = [
+  { id: "1m", label: "1m", ms: 60_000 },
+  { id: "5m", label: "5m", ms: 5 * 60_000 },
+  { id: "15m", label: "15m", ms: 15 * 60_000 },
+  { id: "all", label: "All", ms: null }
+];
 
 type DashboardState = {
   lowerEvent: PolymarketEvent | null;
@@ -679,87 +689,205 @@ function MeasureCell({ value, max, tone }: { value: number; max: number; tone: "
   );
 }
 
+function DepthViz({ bidDepth, askDepth }: { bidDepth: number; askDepth: number }) {
+  const max = Math.max(bidDepth, askDepth, 1);
+  return (
+    <div className="depthViz">
+      <div className="depthVizSide bid">
+        <span>{formatCompactUsd(bidDepth)}</span>
+        <MiniBar value={bidDepth} max={max} tone="green" />
+      </div>
+      <div className="depthVizSide ask">
+        <span>{formatCompactUsd(askDepth)}</span>
+        <MiniBar value={askDepth} max={max} tone="red" />
+      </div>
+    </div>
+  );
+}
+
+function StrikePopover({
+  row,
+  maxDepth,
+  maxVolume,
+  maxLiquidity
+}: {
+  row: MarketBracket & { probability: number; depthTotal: number; bidDepth: number; askDepth: number };
+  maxDepth: number;
+  maxVolume: number;
+  maxLiquidity: number;
+}) {
+  return (
+    <div className="strikePopover">
+      <div className="strikePopoverHeader">
+        <span>Strike</span>
+        <strong>{row.label}</strong>
+      </div>
+      <DepthViz bidDepth={row.bidDepth} askDepth={row.askDepth} />
+      <div className="strikeVisualRows">
+        <label>
+          <span>2c depth</span>
+          <b>{formatCompactUsd(row.depthTotal)}</b>
+        </label>
+        <MiniBar value={row.depthTotal} max={maxDepth} tone="gold" />
+        <label>
+          <span>24h volume</span>
+          <b>{formatCompactUsd(row.volume24h)}</b>
+        </label>
+        <MiniBar value={row.volume24h} max={maxVolume} tone="green" />
+        <label>
+          <span>Liquidity</span>
+          <b>{formatCompactUsd(row.liquidity)}</b>
+        </label>
+        <MiniBar value={row.liquidity} max={maxLiquidity} tone="red" />
+      </div>
+      <div className="strikeMetaGrid">
+        <span>Yes {formatPercent(row.yesPrice)}</span>
+        <span>Blend {formatPercent(row.probability)}</span>
+        <span>Bid {row.bid == null ? "n/a" : formatPercent(row.bid)}</span>
+        <span>Ask {row.ask == null ? "n/a" : formatPercent(row.ask)}</span>
+        <span>Mid {formatCompactUsd(row.midpoint)}</span>
+      </div>
+    </div>
+  );
+}
+
+const toLineData = (points: PricePoint[], key: "polymarket" | "hyperliquid"): LineData<UTCTimestamp>[] => {
+  const byTime = new Map<number, number>();
+  points.forEach((point) => {
+    const value = point[key];
+    if (value == null || !Number.isFinite(value)) return;
+    byTime.set(Math.floor(point.time / 1000), value);
+  });
+  return [...byTime.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
+};
+
 function PriceComparisonChart({ points }: { points: PricePoint[] }) {
-  const width = 760;
-  const height = 260;
-  const padding = { top: 24, right: 28, bottom: 34, left: 54 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-  const values = points.flatMap((point) => [point.polymarket, point.hyperliquid]).filter((value): value is number => value != null && Number.isFinite(value));
-  const minValue = values.length ? Math.min(...values) : 0;
-  const maxValue = values.length ? Math.max(...values) : 1;
-  const range = Math.max(maxValue - minValue, 1);
-  const yMin = Math.max(minValue - range * 0.18, 0);
-  const yMax = maxValue + range * 0.18;
-  const yRange = Math.max(yMax - yMin, 1);
-  const xFor = (index: number) => padding.left + (points.length <= 1 ? chartWidth : (index / (points.length - 1)) * chartWidth);
-  const yFor = (value: number) => padding.top + (1 - (value - yMin) / yRange) * chartHeight;
-  const pathFor = (key: "polymarket" | "hyperliquid") =>
-    points
-      .map((point, index) => ({ value: point[key], x: xFor(index) }))
-      .filter((point): point is { value: number; x: number } => point.value != null && Number.isFinite(point.value))
-      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${yFor(point.value).toFixed(1)}`)
-      .join(" ");
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const chartRef = React.useRef<IChartApi | null>(null);
+  const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
+  const hlSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
+  const [range, setRange] = React.useState<ChartRange>("5m");
+  const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const latest = points.at(-1);
-  const first = points[0];
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => yMin + yRange * ratio);
+  const selectedRange = CHART_RANGES.find((item) => item.id === range) ?? CHART_RANGES[1];
+  const visiblePoints = React.useMemo(() => {
+    if (!selectedRange.ms || points.length === 0) return points;
+    const cutoff = Date.now() - selectedRange.ms;
+    return points.filter((point) => point.time >= cutoff);
+  }, [points, selectedRange.ms]);
+
+  React.useEffect(() => {
+    if (!containerRef.current || chartRef.current) return;
+    const chart = createChart(containerRef.current, {
+      autoSize: true,
+      height: 330,
+      layout: {
+        background: { type: ColorType.Solid, color: "#fbfaf7" },
+        textColor: "#415064",
+        fontFamily: '"IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace',
+        fontSize: 11
+      },
+      grid: {
+        vertLines: { color: "rgba(82, 96, 120, 0.08)" },
+        horzLines: { color: "rgba(82, 96, 120, 0.10)" }
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: "#6b7280", labelBackgroundColor: "#111827" },
+        horzLine: { color: "#6b7280", labelBackgroundColor: "#111827" }
+      },
+      rightPriceScale: {
+        borderColor: "rgba(82, 96, 120, 0.22)",
+        scaleMargins: { top: 0.16, bottom: 0.16 }
+      },
+      timeScale: {
+        borderColor: "rgba(82, 96, 120, 0.22)",
+        timeVisible: true,
+        secondsVisible: false
+      },
+      handleScale: true,
+      handleScroll: true
+    });
+    const pmSeries = chart.addSeries(LineSeries, {
+      color: "#2557d6",
+      lineWidth: 2,
+      priceLineColor: "#2557d6",
+      priceLineWidth: 1,
+      lastValueVisible: true,
+      title: "PM"
+    });
+    const hlSeries = chart.addSeries(LineSeries, {
+      color: "#d14f32",
+      lineWidth: 2,
+      priceLineColor: "#d14f32",
+      priceLineWidth: 1,
+      lastValueVisible: true,
+      title: "HL"
+    });
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time) {
+        setHover(null);
+        return;
+      }
+      const pmData = param.seriesData.get(pmSeries) as LineData<UTCTimestamp> | undefined;
+      const hlData = param.seriesData.get(hlSeries) as LineData<UTCTimestamp> | undefined;
+      setHover({
+        time: Number(param.time),
+        polymarket: pmData?.value ?? null,
+        hyperliquid: hlData?.value ?? null
+      });
+    });
+    chartRef.current = chart;
+    pmSeriesRef.current = pmSeries;
+    hlSeriesRef.current = hlSeries;
+    return () => {
+      chart.remove();
+      chartRef.current = null;
+      pmSeriesRef.current = null;
+      hlSeriesRef.current = null;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const pmData = toLineData(visiblePoints, "polymarket");
+    const hlData = toLineData(visiblePoints, "hyperliquid");
+    pmSeriesRef.current?.setData(pmData);
+    hlSeriesRef.current?.setData(hlData);
+    if (pmData.length || hlData.length) {
+      chartRef.current?.timeScale().fitContent();
+    }
+  }, [visiblePoints]);
+
+  const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
+  const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
 
   return (
     <section className="panel priceChartPanel">
-      <div className="panelHeader">
+      <div className="panelHeader chartHeader">
         <div>
-          <p>Live Chart</p>
-          <h2>Implied CBRS vs Hyperliquid</h2>
+          <p>Market Chart</p>
+          <h2>PM implied CBRS vs Hyperliquid</h2>
         </div>
-        <span>{points.length > 1 && first ? `${new Date(first.time).toLocaleTimeString()} - ${new Date(latest!.time).toLocaleTimeString()}` : "Building history"}</span>
+        <div className="rangeControls" aria-label="Chart time range">
+          {CHART_RANGES.map((item) => (
+            <button className={range === item.id ? "active" : ""} key={item.id} type="button" onClick={() => setRange(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="chartLegend">
-        <span className="legendItem pm">Polymarket implied</span>
-        <span className="legendItem hl">Hyperliquid</span>
+      <div className="chartReadout">
+        <span>PM {readout?.polymarket == null ? "n/a" : formatUsd(readout.polymarket)}</span>
+        <span>HL {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
+        <span>Spread {readoutSpread == null ? "n/a" : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)}`}</span>
+        <span>{readout?.time ? new Date(readout.time * 1000).toLocaleTimeString() : "Waiting for data"}</span>
       </div>
-      <svg className="lineChart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Live line chart comparing Polymarket implied CBRS and Hyperliquid CBRS">
-        <defs>
-          <linearGradient id="pmGradient" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stopColor="#8b5cf6" />
-            <stop offset="100%" stopColor="#06b6d4" />
-          </linearGradient>
-          <linearGradient id="hlGradient" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stopColor="#f97316" />
-            <stop offset="100%" stopColor="#f43f5e" />
-          </linearGradient>
-        </defs>
-        {yTicks.map((tick) => {
-          const y = yFor(tick);
-          return (
-            <g key={tick}>
-              <line className="chartGridLine" x1={padding.left} x2={width - padding.right} y1={y} y2={y} />
-              <text className="chartTick" x={padding.left - 10} y={y + 4} textAnchor="end">
-                {formatUsd(tick, 0)}
-              </text>
-            </g>
-          );
-        })}
-        <line className="chartAxis" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} />
-        {points.length > 1 ? (
-          <>
-            <path className="chartLine pmLine" d={pathFor("polymarket")} />
-            <path className="chartLine hlLine" d={pathFor("hyperliquid")} />
-          </>
-        ) : (
-          <text className="chartEmpty" x={width / 2} y={height / 2} textAnchor="middle">
-            Waiting for live samples
-          </text>
-        )}
-        {latest ? (
-          <>
-            <circle className="chartDot pmDot" cx={xFor(points.length - 1)} cy={yFor(latest.polymarket)} r="4.5" />
-            {latest.hyperliquid == null ? null : <circle className="chartDot hlDot" cx={xFor(points.length - 1)} cy={yFor(latest.hyperliquid)} r="4.5" />}
-          </>
-        ) : null}
-      </svg>
+      <div className="marketChart" ref={containerRef} />
       <div className="chartFooter">
-        <span>PM {latest ? formatUsd(latest.polymarket) : "n/a"}</span>
-        <span>HL {latest?.hyperliquid == null ? "n/a" : formatUsd(latest.hyperliquid)}</span>
+        <span>Drag to pan · scroll/pinch to zoom · crosshair for values</span>
+        <span>{visiblePoints.length} session samples</span>
       </div>
     </section>
   );
@@ -955,56 +1083,28 @@ function App() {
             <span>{data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : "No update yet"}</span>
           </div>
           <div className="bars">
-            {distribution.map((row) => (
-              <div
-                className={`barRow ${hoveredBracket?.id === row.id ? "active" : ""}`}
-                key={row.id}
-                onFocus={() => setHoveredBracketId(row.id)}
-                onMouseEnter={() => setHoveredBracketId(row.id)}
-                tabIndex={0}
-              >
-                <div className="barLabel">{row.label}</div>
-                <div className="barTrack">
-                  <div className="barFill" style={{ width: `${Math.max((row.probability / maxProbability) * 100, 2)}%` }} />
+            {qualityRows.map((row) => {
+              const isActive = hoveredBracket?.id === row.id;
+              return (
+                <div
+                  className={`barRow ${isActive ? "active" : ""}`}
+                  key={row.id}
+                  onBlur={() => setHoveredBracketId(null)}
+                  onFocus={() => setHoveredBracketId(row.id)}
+                  onMouseEnter={() => setHoveredBracketId(row.id)}
+                  onMouseLeave={() => setHoveredBracketId(null)}
+                  tabIndex={0}
+                >
+                  <div className="barLabel">{row.label}</div>
+                  <div className="barTrack">
+                    <div className="barFill" style={{ width: `${Math.max((row.probability / maxProbability) * 100, 2)}%` }} />
+                  </div>
+                  <div className="barValue">{formatPercent(row.probability)}</div>
+                  <StrikePopover row={row} maxDepth={maxQualityDepth} maxVolume={maxQualityVolume} maxLiquidity={maxQualityLiquidity} />
                 </div>
-                <div className="barValue">{formatPercent(row.probability)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {hoveredBracket ? (
-            <div className="strikeTooltip">
-              <div>
-                <span>Selected strike</span>
-                <strong>{hoveredBracket.label}</strong>
-              </div>
-              <div>
-                <span>Raw Yes / blended</span>
-                <strong>
-                  {formatPercent(hoveredBracket.yesPrice)} / {formatPercent(hoveredBracket.probability)}
-                </strong>
-              </div>
-              <div>
-                <span>Bid / ask</span>
-                <strong>
-                  {hoveredBracket.bid == null ? "n/a" : formatPercent(hoveredBracket.bid)} / {hoveredBracket.ask == null ? "n/a" : formatPercent(hoveredBracket.ask)}
-                </strong>
-              </div>
-              <div>
-                <span>2c depth</span>
-                <strong>{formatCompactUsd(hoveredBracket.depthTotal)}</strong>
-              </div>
-              <div>
-                <span>24h volume</span>
-                <strong>{formatCompactUsd(hoveredBracket.volume24h)}</strong>
-              </div>
-              <div>
-                <span>Liquidity / midpoint</span>
-                <strong>
-                  {formatCompactUsd(hoveredBracket.liquidity)} / {formatCompactUsd(hoveredBracket.midpoint)}
-                </strong>
-              </div>
-            </div>
-          ) : null}
           <p className="caption">
             The definitive value is the expected market cap from this live blended distribution, divided by the official post-offering share count. The value
             range assumes outcomes are uniformly distributed inside each bracket; the open-ended {">= $100B"} bracket is capped at $110B for quantile math.

@@ -1,25 +1,24 @@
 :root {
-  color: #edf2f7;
-  background: #0b1020;
+  color: #1e242c;
+  background: #f4f1ea;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --bg: #0b1020;
-  --surface: rgba(16, 24, 39, 0.88);
-  --surface-strong: #111a2d;
-  --surface-soft: #151f34;
-  --border: rgba(148, 163, 184, 0.18);
-  --border-strong: rgba(148, 163, 184, 0.28);
-  --text: #f8fafc;
-  --muted: #94a3b8;
-  --muted-strong: #cbd5e1;
-  --cyan: #22d3ee;
-  --blue: #60a5fa;
-  --violet: #a78bfa;
-  --rose: #fb7185;
-  --amber: #fbbf24;
-  --green: #34d399;
-  --shadow: 0 22px 70px rgba(0, 0, 0, 0.25);
+  --bg: #f4f1ea;
+  --paper: #fbfaf7;
+  --paper-2: #f7f3eb;
+  --ink: #1e242c;
+  --muted: #6d7480;
+  --faint: #9aa0a8;
+  --line: #d9d2c7;
+  --line-strong: #bdb4a7;
+  --blue: #2557d6;
+  --blue-soft: #e6ebfb;
+  --orange: #d14f32;
+  --orange-soft: #f5e6df;
+  --green: #17815e;
+  --red: #bb3e3e;
+  --amber: #a86a16;
 }
 
 * {
@@ -30,12 +29,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, rgba(96, 165, 250, 0.08), transparent 360px),
-    linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px),
-    var(--bg);
-  background-size: auto, 36px 36px, 36px 36px, auto;
+  background: var(--bg);
 }
 
 button,
@@ -61,6 +55,8 @@ p {
   align-items: start;
   gap: 24px;
   margin-bottom: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
 }
 
 .eyebrow {
@@ -68,18 +64,18 @@ p {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  color: var(--cyan);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  color: var(--orange);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 h1 {
-  max-width: 920px;
-  color: var(--text);
-  font-size: clamp(2rem, 3.4vw, 4rem);
-  font-weight: 760;
+  max-width: 960px;
+  color: var(--ink);
+  font-size: clamp(2rem, 3.15vw, 3.8rem);
+  font-weight: 680;
   line-height: 1.02;
   letter-spacing: 0;
 }
@@ -95,25 +91,25 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 32px;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted-strong);
-  background: rgba(15, 23, 42, 0.72);
-  font-size: 0.78rem;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--muted);
+  background: var(--paper);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.74rem;
   font-weight: 700;
-  backdrop-filter: blur(16px);
 }
 
 .status.live {
   color: var(--green);
-  border-color: rgba(52, 211, 153, 0.34);
+  border-color: rgba(23, 129, 94, 0.36);
 }
 
 .status.error {
-  color: var(--rose);
-  border-color: rgba(251, 113, 133, 0.38);
+  color: var(--red);
+  border-color: rgba(187, 62, 62, 0.38);
 }
 
 .notice {
@@ -121,58 +117,56 @@ h1 {
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(251, 191, 36, 0.32);
-  border-radius: 8px;
-  color: #fde68a;
-  background: rgba(120, 53, 15, 0.26);
+  padding: 11px 12px;
+  border: 1px solid rgba(168, 106, 22, 0.35);
+  border-radius: 2px;
+  color: #6f4610;
+  background: #fff8e8;
 }
 
 .metricsGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .metric,
 .panel {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--paper);
 }
 
 .metric {
   display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 12px;
-  min-height: 126px;
-  padding: 14px;
+  grid-template-columns: 32px 1fr;
+  gap: 11px;
+  min-height: 116px;
+  padding: 13px;
 }
 
 .metricIcon {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border: 1px solid rgba(34, 211, 238, 0.28);
-  border-radius: 8px;
-  color: var(--cyan);
-  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid #ccd4e9;
+  border-radius: 2px;
+  color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .metric.positive .metricIcon {
   color: var(--green);
-  border-color: rgba(52, 211, 153, 0.32);
-  background: rgba(52, 211, 153, 0.08);
+  border-color: rgba(23, 129, 94, 0.25);
+  background: #e6f2ed;
 }
 
 .metric.negative .metricIcon {
-  color: var(--rose);
-  border-color: rgba(251, 113, 133, 0.34);
-  background: rgba(251, 113, 133, 0.08);
+  color: var(--red);
+  border-color: rgba(187, 62, 62, 0.25);
+  background: #f6e5e1;
 }
 
 .metric p,
@@ -185,17 +179,17 @@ h1 {
 
 .metric p {
   margin-bottom: 8px;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .metric strong {
   display: block;
-  color: var(--text);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: clamp(1.25rem, 1.7vw, 1.72rem);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: clamp(1.16rem, 1.55vw, 1.55rem);
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
 }
@@ -203,16 +197,16 @@ h1 {
 .metric span {
   display: block;
   margin-top: 10px;
-  color: var(--muted-strong);
-  font-size: 0.82rem;
+  color: #4d5663;
+  font-size: 0.8rem;
   line-height: 1.35;
 }
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.76fr);
-  gap: 10px;
-  margin-bottom: 10px;
+  grid-template-columns: minmax(0, 1.48fr) minmax(320px, 0.78fr);
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .distributionWorkspace .chartPanel {
@@ -220,7 +214,7 @@ h1 {
 }
 
 .panel {
-  padding: 16px;
+  padding: 14px;
 }
 
 .panelHeader {
@@ -228,134 +222,109 @@ h1 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .panelHeader.compact {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .panelHeader p {
   margin-bottom: 4px;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.7rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .panelHeader h2 {
-  color: var(--text);
-  font-size: 1.05rem;
-  font-weight: 720;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 680;
 }
 
 .panelHeader span {
   color: var(--muted);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.74rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.72rem;
   white-space: nowrap;
 }
 
 .priceChartPanel {
-  min-height: 386px;
+  min-height: 440px;
 }
 
-.chartLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.legendItem {
-  display: inline-flex;
+.chartHeader {
   align-items: center;
-  gap: 7px;
-  color: var(--muted-strong);
-  font-size: 0.78rem;
+}
+
+.rangeControls {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.rangeControls button {
+  min-width: 42px;
+  height: 30px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 
-.legendItem::before {
-  width: 18px;
-  height: 3px;
-  border-radius: 999px;
-  content: "";
+.rangeControls button:last-child {
+  border-right: 0;
 }
 
-.legendItem.pm::before {
-  background: linear-gradient(90deg, var(--violet), var(--cyan));
+.rangeControls button.active {
+  color: #fff;
+  background: var(--ink);
 }
 
-.legendItem.hl::before {
-  background: linear-gradient(90deg, #f97316, var(--rose));
+.chartReadout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
-.lineChart {
-  display: block;
-  width: 100%;
-  height: 280px;
+.chartReadout span,
+.chartFooter span {
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  color: var(--ink);
+  padding: 5px 7px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
 }
 
-.chartGridLine {
-  stroke: rgba(148, 163, 184, 0.14);
-  stroke-width: 1;
-}
-
-.chartAxis {
-  stroke: rgba(148, 163, 184, 0.22);
-  stroke-width: 1;
-}
-
-.chartTick,
-.chartEmpty {
-  fill: var(--muted);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 12px;
-}
-
-.chartLine {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3.5;
-}
-
-.pmLine {
-  stroke: url("#pmGradient");
-}
-
-.hlLine {
-  stroke: url("#hlGradient");
-}
-
-.chartDot {
-  stroke: var(--surface-strong);
-  stroke-width: 3;
-}
-
-.pmDot {
-  fill: var(--cyan);
-}
-
-.hlDot {
-  fill: var(--rose);
+.marketChart {
+  height: 330px;
+  border: 1px solid var(--line);
+  background: var(--paper);
 }
 
 .chartFooter {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   margin-top: 8px;
-  color: var(--muted-strong);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
+}
+
+.chartFooter span {
+  color: var(--muted);
 }
 
 .bars {
   display: grid;
-  gap: 9px;
+  gap: 6px;
+  position: relative;
 }
 
 .barRow {
@@ -363,29 +332,24 @@ h1 {
   grid-template-columns: 92px minmax(0, 1fr) 68px;
   align-items: center;
   gap: 12px;
-  margin: 0 -6px;
-  padding: 3px 6px;
-  border-radius: 8px;
+  position: relative;
+  min-height: 26px;
   outline: none;
-  transition:
-    background 140ms ease,
-    transform 140ms ease;
 }
 
 .barRow:hover,
 .barRow:focus,
 .barRow.active {
-  background: rgba(34, 211, 238, 0.075);
-  transform: translateX(2px);
+  z-index: 5;
 }
 
 .barLabel,
 .barValue {
-  color: var(--muted-strong);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.8rem;
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
-  font-weight: 750;
+  font-weight: 650;
 }
 
 .barValue {
@@ -394,17 +358,18 @@ h1 {
 
 .barTrack,
 .miniBar {
-  height: 12px;
+  height: 10px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.11);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--paper-2);
 }
 
 .barFill,
 .miniBarFill {
   height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--violet), var(--cyan));
+  border-radius: 0;
+  background: var(--blue);
 }
 
 .miniBar {
@@ -412,31 +377,110 @@ h1 {
 }
 
 .miniBarFill.green {
-  background: linear-gradient(90deg, var(--green), var(--cyan));
+  background: var(--green);
 }
 
 .miniBarFill.red {
-  background: linear-gradient(90deg, #f97316, var(--rose));
+  background: var(--red);
 }
 
 .miniBarFill.gold {
-  background: linear-gradient(90deg, var(--amber), var(--cyan));
+  background: var(--amber);
+}
+
+.strikePopover {
+  position: absolute;
+  top: 50%;
+  right: 76px;
+  z-index: 20;
+  display: none;
+  width: 340px;
+  transform: translateY(-50%);
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  box-shadow: 0 12px 34px rgba(30, 36, 44, 0.16);
+  padding: 10px;
+  pointer-events: none;
+}
+
+.barRow:hover .strikePopover,
+.barRow:focus .strikePopover {
+  display: grid;
+  gap: 9px;
+}
+
+.strikePopoverHeader,
+.strikeVisualRows label,
+.depthVizSide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.strikePopoverHeader span,
+.strikeVisualRows span,
+.strikeMetaGrid span,
+.depthVizSide span {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.strikePopoverHeader strong,
+.strikeVisualRows b {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.depthViz {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.depthVizSide {
+  display: grid;
+  gap: 5px;
+}
+
+.depthVizSide.bid span {
+  color: var(--green);
+}
+
+.depthVizSide.ask span {
+  color: var(--red);
+}
+
+.strikeVisualRows {
+  display: grid;
+  gap: 5px;
+}
+
+.strikeMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
 }
 
 .caption {
-  margin-top: 14px;
+  margin-top: 12px;
   max-width: 980px;
-  font-size: 0.84rem;
-  line-height: 1.5;
+  font-size: 0.82rem;
+  line-height: 1.48;
 }
 
 .methodFormula {
   display: grid;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.62);
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
 }
 
 .methodFormula span,
@@ -444,8 +488,8 @@ h1 {
 .qualityGrid span,
 .detailItem span {
   color: var(--muted);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.7rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -453,25 +497,24 @@ h1 {
 .methodFormula strong,
 .basisAuditRow strong,
 .basisAuditRow small {
-  color: var(--text);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.84rem;
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
 }
 
 .basisNote,
 .sourceBox {
-  margin-top: 12px;
-  font-size: 0.84rem;
-  line-height: 1.48;
+  margin-top: 11px;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .basisAudit {
   display: grid;
-  margin-top: 12px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
 }
 
 .basisAuditRow {
@@ -479,108 +522,100 @@ h1 {
   grid-template-columns: 1fr auto auto;
   gap: 10px;
   align-items: center;
-  min-height: 36px;
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--border);
-}
-
-.basisAuditRow:last-child {
-  border-bottom: 0;
+  min-height: 34px;
+  padding: 8px 9px;
+  border-bottom: 1px solid var(--line);
 }
 
 .basisAuditRow small {
-  color: var(--cyan);
+  color: var(--blue);
   text-align: right;
 }
 
 .sourceBox {
   display: grid;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid rgba(34, 211, 238, 0.18);
-  border-radius: 8px;
-  background: rgba(34, 211, 238, 0.055);
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #c8d1e9;
+  background: var(--blue-soft);
 }
 
 .sourceBox strong {
-  color: var(--cyan);
-  font-size: 0.86rem;
+  color: var(--blue);
+  font-size: 0.84rem;
 }
 
 .qualityPanel,
 .ipoPanel {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .qualityGrid,
 .detailGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .qualityGrid div,
 .detailItem {
   display: grid;
-  gap: 7px;
-  min-height: 88px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.56);
+  gap: 6px;
+  min-height: 82px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
 }
 
 .qualityGrid strong,
 .detailItem strong {
-  color: var(--text);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 1.02rem;
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
 
 .qualityGrid small,
 .detailItem small {
-  color: var(--muted-strong);
-  font-size: 0.8rem;
+  color: #4d5663;
+  font-size: 0.78rem;
   line-height: 1.35;
 }
 
 .watchList {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
-  padding: 13px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.56);
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
 }
 
 .watchList strong {
-  color: var(--cyan);
-  font-size: 0.9rem;
+  color: var(--orange);
+  font-size: 0.88rem;
 }
 
 .watchList span {
-  color: var(--muted-strong);
-  font-size: 0.84rem;
+  color: #4d5663;
+  font-size: 0.82rem;
   line-height: 1.5;
 }
 
 .depthVisuals {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.2fr);
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .depthCard {
   display: grid;
   align-content: start;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.56);
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
 }
 
 .depthHeader,
@@ -592,15 +627,15 @@ h1 {
 }
 
 .depthHeader strong {
-  color: var(--text);
-  font-size: 0.92rem;
+  color: var(--ink);
+  font-size: 0.9rem;
 }
 
 .depthHeader span,
 .bookTotals span {
   color: var(--muted);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.7rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
   font-weight: 800;
 }
 
@@ -608,9 +643,8 @@ h1 {
 .pmQualityTable {
   display: grid;
   gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
 }
 
 .orderBookHead,
@@ -619,21 +653,17 @@ h1 {
   grid-template-columns: minmax(92px, 1fr) 76px 76px minmax(92px, 1fr);
   gap: 8px;
   align-items: center;
-  min-height: 30px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.orderBookRow:last-child {
-  border-bottom: 0;
+  min-height: 28px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--line);
 }
 
 .orderBookHead,
 .pmQualityHead {
   color: var(--muted);
-  background: rgba(15, 23, 42, 0.68);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.68rem;
+  background: #eee8dd;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -642,8 +672,8 @@ h1 {
 .pmQualityRow strong,
 .pmQualityRow > span,
 .measureCell span {
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -653,7 +683,7 @@ h1 {
 }
 
 .askText {
-  color: var(--rose);
+  color: var(--red);
 }
 
 .measureCell {
@@ -665,7 +695,7 @@ h1 {
 }
 
 .measureCell span {
-  color: var(--muted-strong);
+  color: #4d5663;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -677,21 +707,17 @@ h1 {
   grid-template-columns: 80px 58px repeat(3, minmax(112px, 1fr));
   gap: 8px;
   align-items: center;
-  min-height: 32px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.pmQualityRow:last-child {
-  border-bottom: 0;
+  min-height: 30px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--line);
 }
 
 .pmQualityRow strong {
-  color: var(--text);
+  color: var(--ink);
 }
 
 .pmQualityRow > span {
-  color: var(--muted-strong);
+  color: var(--ink);
   text-align: right;
 }
 
@@ -707,27 +733,27 @@ table {
 
 th,
 td {
-  padding: 11px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--line);
   text-align: left;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.78rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
 }
 
 th {
   color: var(--muted);
-  background: rgba(15, 23, 42, 0.58);
-  font-size: 0.68rem;
+  background: #eee8dd;
+  font-size: 0.66rem;
   text-transform: uppercase;
 }
 
 td {
-  color: var(--muted-strong);
+  color: var(--ink);
 }
 
 tbody tr:hover {
-  background: rgba(34, 211, 238, 0.045);
+  background: #f0eae0;
 }
 
 @media (max-width: 1120px) {
@@ -774,17 +800,20 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-.barRow {
+  .barRow {
     grid-template-columns: 76px minmax(0, 1fr) 54px;
     gap: 8px;
   }
 
-  .lineChart {
-    height: 240px;
+  .strikePopover {
+    left: 0;
+    top: calc(100% + 8px);
+    width: min(340px, calc(100vw - 40px));
+    transform: none;
   }
 
-  .strikeTooltip {
-    grid-template-columns: 1fr;
+  .marketChart {
+    height: 280px;
   }
 
   .orderBook,
@@ -801,41 +830,4 @@ tbody tr:hover {
   .pmQualityRow {
     min-width: 560px;
   }
-}
-
-.strikeTooltip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-  padding: 12px;
-  border: 1px solid rgba(34, 211, 238, 0.18);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(34, 211, 238, 0.09), rgba(167, 139, 250, 0.055)),
-    rgba(15, 23, 42, 0.72);
-}
-
-.strikeTooltip div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.strikeTooltip span {
-  color: var(--muted);
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.68rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.strikeTooltip strong {
-  color: var(--text);
-  overflow: hidden;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 0.86rem;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
