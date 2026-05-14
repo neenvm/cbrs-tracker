@@ -391,10 +391,10 @@ h1 {
 .strikePopover {
   position: absolute;
   top: 50%;
-  right: 76px;
+  right: 12px;
   z-index: 20;
   display: none;
-  width: 340px;
+  width: 460px;
   transform: translateY(-50%);
   border: 1px solid var(--line-strong);
   background: var(--paper);
@@ -411,7 +411,8 @@ h1 {
 
 .strikePopoverHeader,
 .strikeVisualRows label,
-.depthVizSide {
+.depthImbalanceLabels,
+.limitSideHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -420,8 +421,9 @@ h1 {
 
 .strikePopoverHeader span,
 .strikeVisualRows span,
-.strikeMetaGrid span,
-.depthVizSide span {
+.strikeProbGrid span,
+.depthImbalanceLabels span,
+.limitSideHeader span {
   color: var(--muted);
   font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.68rem;
@@ -430,29 +432,91 @@ h1 {
 }
 
 .strikePopoverHeader strong,
-.strikeVisualRows b {
+.strikeVisualRows b,
+.strikeProbGrid strong,
+.limitSideHeader b {
   color: var(--ink);
   font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
   font-size: 0.8rem;
 }
 
-.depthViz {
+.strikeProbGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 0.8fr 0.8fr 1.25fr;
   gap: 8px;
 }
 
-.depthVizSide {
+.strikeProbGrid div {
   display: grid;
-  gap: 5px;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
 }
 
-.depthVizSide.bid span {
+.depthImbalance {
+  display: grid;
+  gap: 6px;
+}
+
+.depthImbalanceTrack {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.depthImbalanceTrack .bidShare {
+  background: var(--green);
+}
+
+.depthImbalanceTrack .askShare {
+  background: var(--red);
+}
+
+.limitBookViz {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.limitSide {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.limitSide small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.limitLevel {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 62px;
+  gap: 6px;
+  align-items: center;
+}
+
+.limitLevel span,
+.limitLevel b {
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.limitLevel.bid span {
   color: var(--green);
 }
 
-.depthVizSide.ask span {
+.limitLevel.ask span {
   color: var(--red);
+}
+
+.limitLevel b {
+  color: var(--ink);
+  text-align: right;
 }
 
 .strikeVisualRows {
@@ -460,12 +524,33 @@ h1 {
   gap: 5px;
 }
 
-.strikeMetaGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
+.depthControls {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.depthControls button {
+  min-width: 54px;
+  height: 26px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.depthControls button:last-child {
+  border-right: 0;
+}
+
+.depthControls button.active {
+  color: #fff;
+  background: var(--ink);
 }
 
 .caption {

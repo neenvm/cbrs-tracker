@@ -1,6 +1,17 @@
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { ColorType, CrosshairMode, LineSeries, createChart, type IChartApi, type ISeriesApi, type LineData, type UTCTimestamp } from "lightweight-charts";
+import {
+  CandlestickSeries,
+  ColorType,
+  CrosshairMode,
+  LineSeries,
+  createChart,
+  type CandlestickData,
+  type IChartApi,
+  type ISeriesApi,
+  type LineData,
+  type UTCTimestamp
+} from "lightweight-charts";
 import { Activity, AlertTriangle, BarChart3, CircleDollarSign, RefreshCw, Scale, Wifi } from "lucide-react";
 import "./styles.css";
 
@@ -45,6 +56,8 @@ type PolymarketDepth = {
   bestBid: number | null;
   bestAsk: number | null;
   spread: number | null;
+  bidLevels: Array<{ price: number; size: number; notional: number; cumulative: number }>;
+  askLevels: Array<{ price: number; size: number; notional: number; cumulative: number }>;
 };
 
 type HyperLevel = {
@@ -69,6 +82,19 @@ type HyperCtx = {
   markPx?: string;
   midPx?: string;
   dayBaseVlm?: string;
+};
+
+type HyperCandle = {
+  t: number;
+  T: number;
+  s: string;
+  i: string;
+  o: string;
+  c: string;
+  h: string;
+  l: string;
+  v: string;
+  n: number;
 };
 
 type HyperQuality = {
@@ -118,12 +144,20 @@ type PricePoint = {
   hyperliquid: number | null;
 };
 
-type ChartRange = "1m" | "5m" | "15m" | "all";
+type ChartCandle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+type ChartRange = "15m" | "1h" | "6h" | "all";
 
 const CHART_RANGES: Array<{ id: ChartRange; label: string; ms: number | null }> = [
-  { id: "1m", label: "1m", ms: 60_000 },
-  { id: "5m", label: "5m", ms: 5 * 60_000 },
   { id: "15m", label: "15m", ms: 15 * 60_000 },
+  { id: "1h", label: "1h", ms: 60 * 60_000 },
+  { id: "6h", label: "6h", ms: 6 * 60 * 60_000 },
   { id: "all", label: "All", ms: null }
 ];
 
@@ -421,7 +455,17 @@ function summarizePolymarketBook(book: PolymarketBook): PolymarketDepth {
   const askCeiling = bestAsk == null ? null : Math.min(bestAsk + 0.02, 1);
   const bidDepth2c = bidFloor == null ? 0 : bids.filter((level) => level.price >= bidFloor).reduce((sum, level) => sum + level.price * level.size, 0);
   const askDepth2c = askCeiling == null ? 0 : asks.filter((level) => level.price <= askCeiling).reduce((sum, level) => sum + level.price * level.size, 0);
-  return { bestBid, bestAsk, spread, bidDepth2c, askDepth2c };
+  const withCumulative = (levels: Array<{ price: number; size: number }>) => {
+    let cumulative = 0;
+    return levels.map((level) => {
+      const notional = level.price * level.size;
+      cumulative += notional;
+      return { ...level, notional, cumulative };
+    });
+  };
+  const bidLevels = withCumulative(bids.sort((a, b) => b.price - a.price).slice(0, 8));
+  const askLevels = withCumulative(asks.sort((a, b) => a.price - b.price).slice(0, 8));
+  return { bestBid, bestAsk, spread, bidDepth2c, askDepth2c, bidLevels, askLevels };
 }
 
 async function fetchPolymarketBooks(tokenIds: string[]) {
@@ -468,14 +512,12 @@ function summarizeHyperBook(
   const bidDepth1Pct = bidFloor == null ? 0 : bids.filter((level) => level.price >= bidFloor).reduce((sum, level) => sum + level.price * level.size, 0);
   const askDepth1Pct = askCeiling == null ? 0 : asks.filter((level) => level.price <= askCeiling).reduce((sum, level) => sum + level.price * level.size, 0);
   const bidLevels = bids
-    .filter((level) => bidFloor == null || level.price >= bidFloor)
     .sort((a, b) => b.price - a.price)
-    .slice(0, 12)
+    .slice(0, 20)
     .map((level) => ({ ...level, notional: level.price * level.size }));
   const askLevels = asks
-    .filter((level) => askCeiling == null || level.price <= askCeiling)
     .sort((a, b) => a.price - b.price)
-    .slice(0, 12)
+    .slice(0, 20)
     .map((level) => ({ ...level, notional: level.price * level.size }));
   return { bestBid, bestAsk, spread, bidDepth1Pct, askDepth1Pct, bidLevels, askLevels, bookTime: book.time };
 }
@@ -508,6 +550,104 @@ async function fetchHyperQuality() {
     oraclePrice: toNumber(ctx.oraclePx),
     prevDayPrice: toNumber(ctx.prevDayPx),
     ...summarizeHyperBook(book, mid)
+  };
+}
+
+async function fetchHyperCandles(startTime: number, endTime: number) {
+  const response = await fetch("/hyperliquid-info", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      type: "candleSnapshot",
+      req: {
+        coin: HYPER_COIN,
+        interval: "1m",
+        startTime,
+        endTime
+      }
+    })
+  });
+  if (!response.ok) throw new Error(`Hyperliquid candles returned ${response.status}`);
+  return (await response.json()) as HyperCandle[];
+}
+
+async function fetchPolymarketPriceHistory(tokenId: string, startTs: number, endTs: number) {
+  const params = new URLSearchParams({
+    market: tokenId,
+    startTs: String(startTs),
+    endTs: String(endTs),
+    interval: "all",
+    fidelity: "5"
+  });
+  const response = await fetch(`/polymarket-clob/prices-history?${params.toString()}`);
+  if (!response.ok) throw new Error(`Polymarket price history returned ${response.status}`);
+  const payload = (await response.json()) as { history?: Array<{ t: number; p: number }> };
+  return payload.history ?? [];
+}
+
+function buildHistoricalPolymarketSeries(lower: MarketBracket[], upper: MarketBracket[], histories: Record<string, Array<{ t: number; p: number }>>) {
+  const brackets = [...lower, ...upper];
+  const tokenIds = brackets.map((row) => row.tokenId).filter(Boolean);
+  const timestamps = [...new Set(Object.values(histories).flatMap((history) => history.map((point) => point.t)))].sort((a, b) => a - b);
+  const latest = new Map<string, number>();
+  const cursors = new Map<string, number>(tokenIds.map((tokenId) => [tokenId, 0]));
+  const points: Array<{ time: number; value: number }> = [];
+
+  timestamps.forEach((timestamp) => {
+    tokenIds.forEach((tokenId) => {
+      const history = histories[tokenId] ?? [];
+      let cursor = cursors.get(tokenId) ?? 0;
+      while (cursor < history.length && history[cursor].t <= timestamp) {
+        const price = Number(history[cursor].p);
+        if (Number.isFinite(price)) latest.set(tokenId, price);
+        cursor += 1;
+      }
+      cursors.set(tokenId, cursor);
+    });
+
+    const coverage = tokenIds.filter((tokenId) => latest.has(tokenId)).length / Math.max(tokenIds.length, 1);
+    if (coverage < 0.65) return;
+    const lowerAtTime = lower.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId) ?? row.yesPrice }));
+    const upperAtTime = upper.map((row) => ({ ...row, yesPrice: latest.get(row.tokenId) ?? row.yesPrice }));
+    const cap = expectedMarketCap(buildDistribution(lowerAtTime, upperAtTime));
+    if (Number.isFinite(cap) && cap > 0) points.push({ time: timestamp * 1000, value: cap / OFFICIAL_POST_OFFERING_SHARES });
+  });
+
+  return points;
+}
+
+async function fetchHistoricalPriceSeries(lower: MarketBracket[], upper: MarketBracket[]) {
+  const endMs = Date.now();
+  const startMs = endMs - 8 * 24 * 60 * 60 * 1000;
+  const startTs = Math.floor(startMs / 1000);
+  const endTs = Math.floor(endMs / 1000);
+  const tokenIds = [...new Set([...lower, ...upper].map((row) => row.tokenId).filter(Boolean))];
+  const [hyperCandles, polymarketHistories] = await Promise.all([
+    fetchHyperCandles(startMs, endMs),
+    Promise.all(tokenIds.map(async (tokenId) => [tokenId, await fetchPolymarketPriceHistory(tokenId, startTs, endTs)] as const))
+  ]);
+  const hyperByTime = new Map<number, number>();
+  const candles = hyperCandles
+    .map((candle) => ({
+      time: candle.t,
+      open: Number(candle.o),
+      high: Number(candle.h),
+      low: Number(candle.l),
+      close: Number(candle.c)
+    }))
+    .filter((candle) => [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite));
+  hyperCandles.forEach((candle) => {
+    const close = Number(candle.c);
+    if (Number.isFinite(close)) hyperByTime.set(candle.t, close);
+  });
+  const pmPoints = buildHistoricalPolymarketSeries(lower, upper, Object.fromEntries(polymarketHistories));
+  return {
+    points: pmPoints.map((point) => ({
+      time: point.time,
+      polymarket: point.value,
+      hyperliquid: hyperByTime.get(Math.floor(point.time / 60000) * 60000) ?? null
+    })),
+    candles
   };
 }
 
@@ -689,43 +829,99 @@ function MeasureCell({ value, max, tone }: { value: number; max: number; tone: "
   );
 }
 
-function DepthViz({ bidDepth, askDepth }: { bidDepth: number; askDepth: number }) {
-  const max = Math.max(bidDepth, askDepth, 1);
-  return (
-    <div className="depthViz">
-      <div className="depthVizSide bid">
-        <span>{formatCompactUsd(bidDepth)}</span>
-        <MiniBar value={bidDepth} max={max} tone="green" />
-      </div>
-      <div className="depthVizSide ask">
-        <span>{formatCompactUsd(askDepth)}</span>
-        <MiniBar value={askDepth} max={max} tone="red" />
-      </div>
-    </div>
-  );
-}
-
 function StrikePopover({
   row,
   maxDepth,
   maxVolume,
   maxLiquidity
 }: {
-  row: MarketBracket & { probability: number; depthTotal: number; bidDepth: number; askDepth: number };
+  row: MarketBracket & {
+    probability: number;
+    depthTotal: number;
+    bidDepth: number;
+    askDepth: number;
+    bidLevels: Array<{ price: number; size: number; notional: number; cumulative: number }>;
+    askLevels: Array<{ price: number; size: number; notional: number; cumulative: number }>;
+  };
   maxDepth: number;
   maxVolume: number;
   maxLiquidity: number;
 }) {
+  const maxLevelNotional = Math.max(...row.bidLevels.map((level) => level.notional), ...row.askLevels.map((level) => level.notional), 1);
+  const depthTotal = row.bidDepth + row.askDepth;
+  const bidShare = depthTotal ? (row.bidDepth / depthTotal) * 100 : 50;
+  const topBidLevels = row.bidLevels.slice(0, 5);
+  const topAskLevels = row.askLevels.slice(0, 5);
+
   return (
     <div className="strikePopover">
       <div className="strikePopoverHeader">
-        <span>Strike</span>
+        <span>Market cap bracket</span>
         <strong>{row.label}</strong>
       </div>
-      <DepthViz bidDepth={row.bidDepth} askDepth={row.askDepth} />
+
+      <div className="strikeProbGrid">
+        <div>
+          <span>Raw Yes</span>
+          <strong>{formatPercent(row.yesPrice)}</strong>
+        </div>
+        <div>
+          <span>Blended</span>
+          <strong>{formatPercent(row.probability)}</strong>
+        </div>
+        <div>
+          <span>Bid / Ask</span>
+          <strong>
+            {row.bid == null ? "n/a" : formatPercent(row.bid)} / {row.ask == null ? "n/a" : formatPercent(row.ask)}
+          </strong>
+        </div>
+      </div>
+
+      <div className="depthImbalance">
+        <div className="depthImbalanceLabels">
+          <span>Bid support {formatCompactUsd(row.bidDepth)}</span>
+          <span>Ask supply {formatCompactUsd(row.askDepth)}</span>
+        </div>
+        <div className="depthImbalanceTrack">
+          <div className="bidShare" style={{ width: `${bidShare}%` }} />
+          <div className="askShare" style={{ width: `${100 - bidShare}%` }} />
+        </div>
+      </div>
+
+      <div className="limitBookViz">
+        <div className="limitSide">
+          <div className="limitSideHeader">
+            <span>Bid limits</span>
+            <b>Price · $ depth</b>
+          </div>
+          {topBidLevels.map((level) => (
+            <div className="limitLevel bid" key={`bid-${row.id}-${level.price}`}>
+              <span>{formatPercent(level.price)}</span>
+              <MiniBar value={level.notional} max={maxLevelNotional} tone="green" />
+              <b>{formatCompactUsd(level.notional)}</b>
+            </div>
+          ))}
+          {topBidLevels.length === 0 ? <small>No visible bid levels</small> : null}
+        </div>
+        <div className="limitSide">
+          <div className="limitSideHeader">
+            <span>Ask limits</span>
+            <b>Price · $ depth</b>
+          </div>
+          {topAskLevels.map((level) => (
+            <div className="limitLevel ask" key={`ask-${row.id}-${level.price}`}>
+              <span>{formatPercent(level.price)}</span>
+              <MiniBar value={level.notional} max={maxLevelNotional} tone="red" />
+              <b>{formatCompactUsd(level.notional)}</b>
+            </div>
+          ))}
+          {topAskLevels.length === 0 ? <small>No visible ask levels</small> : null}
+        </div>
+      </div>
+
       <div className="strikeVisualRows">
         <label>
-          <span>2c depth</span>
+          <span>2c near-touch depth</span>
           <b>{formatCompactUsd(row.depthTotal)}</b>
         </label>
         <MiniBar value={row.depthTotal} max={maxDepth} tone="gold" />
@@ -735,17 +931,10 @@ function StrikePopover({
         </label>
         <MiniBar value={row.volume24h} max={maxVolume} tone="green" />
         <label>
-          <span>Liquidity</span>
+          <span>Displayed liquidity</span>
           <b>{formatCompactUsd(row.liquidity)}</b>
         </label>
         <MiniBar value={row.liquidity} max={maxLiquidity} tone="red" />
-      </div>
-      <div className="strikeMetaGrid">
-        <span>Yes {formatPercent(row.yesPrice)}</span>
-        <span>Blend {formatPercent(row.probability)}</span>
-        <span>Bid {row.bid == null ? "n/a" : formatPercent(row.bid)}</span>
-        <span>Ask {row.ask == null ? "n/a" : formatPercent(row.ask)}</span>
-        <span>Mid {formatCompactUsd(row.midpoint)}</span>
       </div>
     </div>
   );
@@ -763,12 +952,21 @@ const toLineData = (points: PricePoint[], key: "polymarket" | "hyperliquid"): Li
     .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
 };
 
-function PriceComparisonChart({ points }: { points: PricePoint[] }) {
+const toCandleData = (candles: ChartCandle[]): CandlestickData<UTCTimestamp>[] =>
+  candles.map((candle) => ({
+    time: Math.floor(candle.time / 1000) as UTCTimestamp,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close
+  }));
+
+function PriceComparisonChart({ points, candles, historyStatus }: { points: PricePoint[]; candles: ChartCandle[]; historyStatus: string }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
-  const hlSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
-  const [range, setRange] = React.useState<ChartRange>("5m");
+  const hlSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const [range, setRange] = React.useState<ChartRange>("1h");
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
   const latest = points.at(-1);
   const selectedRange = CHART_RANGES.find((item) => item.id === range) ?? CHART_RANGES[1];
@@ -799,6 +997,12 @@ function PriceComparisonChart({ points }: { points: PricePoint[] }) {
         horzLine: { color: "#6b7280", labelBackgroundColor: "#111827" }
       },
       rightPriceScale: {
+        visible: true,
+        borderColor: "rgba(82, 96, 120, 0.22)",
+        scaleMargins: { top: 0.16, bottom: 0.16 }
+      },
+      leftPriceScale: {
+        visible: true,
         borderColor: "rgba(82, 96, 120, 0.22)",
         scaleMargins: { top: 0.16, bottom: 0.16 }
       },
@@ -816,13 +1020,17 @@ function PriceComparisonChart({ points }: { points: PricePoint[] }) {
       priceLineColor: "#2557d6",
       priceLineWidth: 1,
       lastValueVisible: true,
+      priceScaleId: "left",
       title: "PM"
     });
-    const hlSeries = chart.addSeries(LineSeries, {
-      color: "#d14f32",
-      lineWidth: 2,
-      priceLineColor: "#d14f32",
-      priceLineWidth: 1,
+    const hlSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "#17815e",
+      downColor: "#bb3e3e",
+      borderUpColor: "#17815e",
+      borderDownColor: "#bb3e3e",
+      wickUpColor: "#17815e",
+      wickDownColor: "#bb3e3e",
+      priceScaleId: "right",
       lastValueVisible: true,
       title: "HL"
     });
@@ -832,11 +1040,11 @@ function PriceComparisonChart({ points }: { points: PricePoint[] }) {
         return;
       }
       const pmData = param.seriesData.get(pmSeries) as LineData<UTCTimestamp> | undefined;
-      const hlData = param.seriesData.get(hlSeries) as LineData<UTCTimestamp> | undefined;
+      const hlData = param.seriesData.get(hlSeries) as CandlestickData<UTCTimestamp> | undefined;
       setHover({
         time: Number(param.time),
         polymarket: pmData?.value ?? null,
-        hyperliquid: hlData?.value ?? null
+        hyperliquid: hlData?.close ?? null
       });
     });
     chartRef.current = chart;
@@ -852,13 +1060,14 @@ function PriceComparisonChart({ points }: { points: PricePoint[] }) {
 
   React.useEffect(() => {
     const pmData = toLineData(visiblePoints, "polymarket");
-    const hlData = toLineData(visiblePoints, "hyperliquid");
+    const cutoff = visiblePoints[0]?.time ?? 0;
+    const candleData = toCandleData(candles.filter((candle) => candle.time >= cutoff));
     pmSeriesRef.current?.setData(pmData);
-    hlSeriesRef.current?.setData(hlData);
-    if (pmData.length || hlData.length) {
+    hlSeriesRef.current?.setData(candleData);
+    if (pmData.length || candleData.length) {
       chartRef.current?.timeScale().fitContent();
     }
-  }, [visiblePoints]);
+  }, [visiblePoints, candles]);
 
   const readout = hover ?? (latest ? { time: Math.floor(latest.time / 1000), polymarket: latest.polymarket, hyperliquid: latest.hyperliquid } : null);
   const readoutSpread = readout?.polymarket && readout.hyperliquid != null ? readout.hyperliquid - readout.polymarket : null;
@@ -880,13 +1089,13 @@ function PriceComparisonChart({ points }: { points: PricePoint[] }) {
       </div>
       <div className="chartReadout">
         <span>PM {readout?.polymarket == null ? "n/a" : formatUsd(readout.polymarket)}</span>
-        <span>HL {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
+        <span>HL candle {readout?.hyperliquid == null ? "n/a" : formatUsd(readout.hyperliquid)}</span>
         <span>Spread {readoutSpread == null ? "n/a" : `${readoutSpread >= 0 ? "+" : ""}${formatUsd(readoutSpread)}`}</span>
         <span>{readout?.time ? new Date(readout.time * 1000).toLocaleTimeString() : "Waiting for data"}</span>
       </div>
       <div className="marketChart" ref={containerRef} />
       <div className="chartFooter">
-        <span>Drag to pan · scroll/pinch to zoom · crosshair for values</span>
+        <span>{historyStatus}</span>
         <span>{visiblePoints.length} session samples</span>
       </div>
     </section>
@@ -896,6 +1105,7 @@ function PriceComparisonChart({ points }: { points: PricePoint[] }) {
 function App() {
   const data = useDashboardData();
   const [hoveredBracketId, setHoveredBracketId] = React.useState<string | null>(null);
+  const [hyperDepthPct, setHyperDepthPct] = React.useState(0.01);
   const { lower, upper } = getBrackets(data.lowerEvent, data.upperEvent, data.polymarketMidpoints, data.polymarketDepth);
   const distribution = buildDistribution(lower, upper);
   const expectedCap = expectedMarketCap(distribution);
@@ -912,18 +1122,24 @@ function App() {
       ...row,
       depthTotal: (depth?.bidDepth2c ?? 0) + (depth?.askDepth2c ?? 0),
       bidDepth: depth?.bidDepth2c ?? 0,
-      askDepth: depth?.askDepth2c ?? 0
+      askDepth: depth?.askDepth2c ?? 0,
+      bidLevels: depth?.bidLevels ?? [],
+      askLevels: depth?.askLevels ?? []
     };
   });
   const distributionDepth = qualityRows.reduce((sum, row) => sum + row.depthTotal, 0);
   const maxQualityDepth = Math.max(...qualityRows.map((row) => row.depthTotal), 1);
   const maxQualityVolume = Math.max(...qualityRows.map((row) => row.volume24h), 1);
   const maxQualityLiquidity = Math.max(...qualityRows.map((row) => row.liquidity), 1);
-  const hyperBookMax = Math.max(
-    ...(data.hyperQuality?.bidLevels ?? []).map((level) => level.notional),
-    ...(data.hyperQuality?.askLevels ?? []).map((level) => level.notional),
-    1
-  );
+  const hyperMidForDepth =
+    data.hyperPrice ??
+    data.hyperQuality?.markPrice ??
+    (data.hyperQuality?.bestBid != null && data.hyperQuality?.bestAsk != null ? (data.hyperQuality.bestBid + data.hyperQuality.bestAsk) / 2 : null);
+  const hyperBidLevels = (data.hyperQuality?.bidLevels ?? []).filter((level) => hyperMidForDepth == null || level.price >= hyperMidForDepth * (1 - hyperDepthPct));
+  const hyperAskLevels = (data.hyperQuality?.askLevels ?? []).filter((level) => hyperMidForDepth == null || level.price <= hyperMidForDepth * (1 + hyperDepthPct));
+  const hyperBidDepth = hyperBidLevels.reduce((sum, level) => sum + level.notional, 0);
+  const hyperAskDepth = hyperAskLevels.reduce((sum, level) => sum + level.notional, 0);
+  const hyperBookMax = Math.max(...hyperBidLevels.map((level) => level.notional), ...hyperAskLevels.map((level) => level.notional), 1);
   const selectedBasis = SHARE_BASES[0];
   const polymarketSharePrice = expectedCap / selectedBasis.shares;
   const shareP10 = capP10 / selectedBasis.shares;
@@ -940,7 +1156,7 @@ function App() {
   const grossProceedsWithOption = IPO_OFFER_PRICE * (IPO_OFFERED_SHARES + IPO_OVERALLOTMENT_SHARES);
   const offeredFloatPct = IPO_OFFERED_SHARES / OFFICIAL_POST_OFFERING_SHARES;
   const maxProbability = Math.max(...distribution.map((row) => row.probability), 0.01);
-  const bookRowCount = Math.max(data.hyperQuality?.bidLevels.length ?? 0, data.hyperQuality?.askLevels.length ?? 0);
+  const bookRowCount = Math.max(hyperBidLevels.length, hyperAskLevels.length);
   const noIpoPrice =
     upper.find((row) => /not IPO/i.test(row.label))?.yesPrice ??
     (data.upperEvent?.markets.find((market) => /not IPO before July/i.test(market.question))?.outcomePrices
@@ -948,6 +1164,10 @@ function App() {
       : null);
   const hoveredBracket = qualityRows.find((row) => row.id === hoveredBracketId) ?? qualityRows.find((row) => row.probability === maxProbability) ?? null;
   const [priceHistory, setPriceHistory] = React.useState<PricePoint[]>([]);
+  const [historicalPriceHistory, setHistoricalPriceHistory] = React.useState<PricePoint[]>([]);
+  const [hyperCandleHistory, setHyperCandleHistory] = React.useState<ChartCandle[]>([]);
+  const [historyStatus, setHistoryStatus] = React.useState("Loading public chart history");
+  const historyKey = React.useMemo(() => [...lower, ...upper].map((row) => row.tokenId).join(":"), [lower, upper]);
 
   React.useEffect(() => {
     if (!Number.isFinite(polymarketSharePrice) || polymarketSharePrice <= 0) return;
@@ -961,6 +1181,39 @@ function App() {
       return [...current, point].slice(-90);
     });
   }, [polymarketSharePrice, data.hyperPrice]);
+  React.useEffect(() => {
+    if (lower.length === 0 || upper.length === 0) return;
+    let cancelled = false;
+    setHistoryStatus("Loading public chart history");
+    fetchHistoricalPriceSeries(lower, upper)
+      .then(({ points, candles }) => {
+        if (cancelled) return;
+        setHistoricalPriceHistory(points);
+        setHyperCandleHistory(candles);
+        const first = points[0]?.time;
+        const last = points.at(-1)?.time;
+        setHistoryStatus(
+          first && last
+            ? `Public history loaded: ${new Date(first).toLocaleString()} - ${new Date(last).toLocaleString()}`
+            : "No historical Polymarket/HL overlap found; showing live session"
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setHistoricalPriceHistory([]);
+        setHyperCandleHistory([]);
+        setHistoryStatus(error instanceof Error ? `History unavailable: ${error.message}` : "History unavailable; showing live session");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [historyKey]);
+  const chartPoints = React.useMemo(() => {
+    const merged = new Map<number, PricePoint>();
+    historicalPriceHistory.forEach((point) => merged.set(Math.floor(point.time / 1000) * 1000, point));
+    priceHistory.forEach((point) => merged.set(Math.floor(point.time / 1000) * 1000, point));
+    return [...merged.values()].sort((a, b) => a.time - b.time);
+  }, [historicalPriceHistory, priceHistory]);
 
   return (
     <main>
@@ -1038,7 +1291,7 @@ function App() {
       </section>
 
       <section className="workspace">
-        <PriceComparisonChart points={priceHistory} />
+        <PriceComparisonChart points={chartPoints} candles={hyperCandleHistory} historyStatus={historyStatus} />
 
         <aside className="panel methodologyPanel">
           <div className="panelHeader compact">
@@ -1150,11 +1403,18 @@ function App() {
           <div className="depthCard">
             <div className="depthHeader">
               <strong>Hyperliquid depth ladder</strong>
-              <span>Within 1% of mid, notional by level</span>
+              <span>Spread {formatMaybeUsd(data.hyperQuality?.spread, 2)} · window {(hyperDepthPct * 100).toFixed(2)}%</span>
+            </div>
+            <div className="depthControls" aria-label="Hyperliquid depth window">
+              {[0.0025, 0.005, 0.01, 0.02].map((value) => (
+                <button className={hyperDepthPct === value ? "active" : ""} key={value} type="button" onClick={() => setHyperDepthPct(value)}>
+                  {(value * 100).toFixed(value < 0.01 ? 2 : 0)}%
+                </button>
+              ))}
             </div>
             <div className="bookTotals">
-              <span>Bid depth {formatMaybeCompactUsd(data.hyperQuality?.bidDepth1Pct)}</span>
-              <span>Ask depth {formatMaybeCompactUsd(data.hyperQuality?.askDepth1Pct)}</span>
+              <span>Bid depth {formatMaybeCompactUsd(hyperBidDepth)}</span>
+              <span>Ask depth {formatMaybeCompactUsd(hyperAskDepth)}</span>
             </div>
             <div className="orderBook">
               <div className="orderBookHead">
@@ -1164,8 +1424,8 @@ function App() {
                 <span>Ask notional</span>
               </div>
               {Array.from({ length: bookRowCount }).map((_, index) => {
-                const bid = data.hyperQuality?.bidLevels[index];
-                const ask = data.hyperQuality?.askLevels[index];
+                const bid = hyperBidLevels[index];
+                const ask = hyperAskLevels[index];
                 return (
                   <div className="orderBookRow" key={`book-${index}`}>
                     <MeasureCell value={bid?.notional ?? 0} max={hyperBookMax} tone="green" />
