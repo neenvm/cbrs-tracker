@@ -1620,12 +1620,12 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
         horzLine: { color: "#6b7280", labelBackgroundColor: "#111827" }
       },
       rightPriceScale: {
-        visible: false
-      },
-      leftPriceScale: {
         visible: true,
         borderColor: "rgba(82, 96, 120, 0.22)",
         scaleMargins: { top: 0.16, bottom: 0.16 }
+      },
+      leftPriceScale: {
+        visible: false
       },
       timeScale: {
         borderColor: "rgba(82, 96, 120, 0.22)",
@@ -1647,7 +1647,7 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
       priceLineColor: "#2557d6",
       priceLineWidth: 1,
       lastValueVisible: true,
-      priceScaleId: "left",
+      priceScaleId: "right",
       title: "PM"
     });
     const hlSeries = chart.addSeries(CandlestickSeries, {
@@ -1657,7 +1657,7 @@ function PriceComparisonChart({ points, candlesByInterval, historyStatus }: { po
       borderDownColor: "#bb3e3e",
       wickUpColor: "#17815e",
       wickDownColor: "#bb3e3e",
-      priceScaleId: "left",
+      priceScaleId: "right",
       lastValueVisible: true,
       title: "HL"
     });
