@@ -202,6 +202,15 @@ type PricePoint = {
   hyperliquid: number | null;
 };
 
+type ChartMeasurement = {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  startPrice: number;
+  endPrice: number;
+};
+
 type ChartCandle = {
   time: number;
   open: number;
@@ -1613,8 +1622,10 @@ function PriceComparisonChart({
   const pmSeriesRef = React.useRef<ISeriesApi<"Line"> | null>(null);
   const hlSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastAutoFitRef = React.useRef<{ interval: ChartInterval | null; start: number | null; end: number | null }>({ interval: null, start: null, end: null });
+  const measurementStartRef = React.useRef<{ x: number; y: number; price: number } | null>(null);
   const [interval, setInterval] = React.useState<ChartInterval>("15m");
   const [hover, setHover] = React.useState<{ time: number | null; polymarket: number | null; hyperliquid: number | null } | null>(null);
+  const [measurement, setMeasurement] = React.useState<ChartMeasurement | null>(null);
   const selectedInterval = CHART_INTERVALS.find((item) => item.id === interval) ?? CHART_INTERVALS[1];
   const displayPoints = React.useMemo(() => aggregatePricePoints(points, selectedInterval.ms), [points, selectedInterval.ms]);
   const displayCandles = React.useMemo(() => candlesByInterval[interval] ?? [], [candlesByInterval, interval]);
@@ -1623,6 +1634,18 @@ function PriceComparisonChart({
       ? `HL ${selectedInterval.label} returned range: ${formatLocalDateTime(displayCandles[0].time)} - ${formatLocalDateTime(displayCandles.at(-1)!.time)}`
       : `HL ${selectedInterval.label} history unavailable`;
   const latest = displayPoints.at(-1);
+
+  const getMeasurementPoint = React.useCallback((event: PointerEvent) => {
+    const container = containerRef.current;
+    const series = hlSeriesRef.current ?? pmSeriesRef.current;
+    if (!container || !series) return null;
+    const rect = container.getBoundingClientRect();
+    const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+    const y = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
+    const price = Number(series.coordinateToPrice(y));
+    if (!Number.isFinite(price)) return null;
+    return { x, y, price };
+  }, []);
 
   React.useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
@@ -1721,6 +1744,68 @@ function PriceComparisonChart({
   }, []);
 
   React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!event.shiftKey || event.button !== 0) return;
+      const point = getMeasurementPoint(event);
+      if (!point) return;
+      event.preventDefault();
+      event.stopPropagation();
+      measurementStartRef.current = point;
+      setMeasurement({
+        startX: point.x,
+        startY: point.y,
+        endX: point.x,
+        endY: point.y,
+        startPrice: point.price,
+        endPrice: point.price
+      });
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const start = measurementStartRef.current;
+      if (!start) return;
+      const point = getMeasurementPoint(event);
+      if (!point) return;
+      event.preventDefault();
+      setMeasurement({
+        startX: start.x,
+        startY: start.y,
+        endX: point.x,
+        endY: point.y,
+        startPrice: start.price,
+        endPrice: point.price
+      });
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (!measurementStartRef.current) return;
+      event.preventDefault();
+      measurementStartRef.current = null;
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        measurementStartRef.current = null;
+        setMeasurement(null);
+      }
+    };
+
+    container.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      container.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [getMeasurementPoint]);
+
+  React.useEffect(() => {
     const pmData = aggregateLineData(points, "polymarket", selectedInterval.ms);
     const candleData = toCandleData(displayCandles);
     pmSeriesRef.current?.setData(pmData);
@@ -1745,6 +1830,14 @@ function PriceComparisonChart({
   const readoutSpreadPct = readoutSpread != null && readout?.polymarket ? readoutSpread / readout.polymarket : null;
   const chartOiNotional = hyperOiNotional(hyperQuality, readout?.hyperliquid);
   const chartAnnualizedFunding = annualizedHyperFunding(hyperQuality?.fundingRate);
+  const measurementDelta = measurement ? measurement.endPrice - measurement.startPrice : null;
+  const measurementPct = measurement && measurement.startPrice !== 0 ? measurementDelta! / measurement.startPrice : null;
+  const measurementLeft = measurement ? Math.min(measurement.startX, measurement.endX) : 0;
+  const measurementTop = measurement ? Math.min(measurement.startY, measurement.endY) : 0;
+  const measurementWidth = measurement ? Math.abs(measurement.endX - measurement.startX) : 0;
+  const measurementHeight = measurement ? Math.abs(measurement.endY - measurement.startY) : 0;
+  const measurementLabelX = measurement ? Math.min(Math.max(measurement.endX + 10, 8), Math.max(8, (containerRef.current?.clientWidth ?? 0) - 178)) : 0;
+  const measurementLabelY = measurement ? Math.min(Math.max(measurement.endY - 18, 8), Math.max(8, (containerRef.current?.clientHeight ?? 0) - 58)) : 0;
 
   return (
     <section className="panel priceChartPanel">
@@ -1785,13 +1878,38 @@ function PriceComparisonChart({
         </span>
         <span>{readout?.time ? formatChartAxisTime(readout.time * 1000) : "Waiting for data"}</span>
       </div>
-      <div className="marketChart" ref={containerRef} />
+      <div className="marketChart" ref={containerRef}>
+        {measurement && measurementDelta != null ? (
+          <div className="measureOverlay" aria-hidden="true">
+            <div
+              className={`measureBox ${measurementDelta >= 0 ? "up" : "down"}`}
+              style={{ left: measurementLeft, top: measurementTop, width: measurementWidth, height: measurementHeight }}
+            />
+            <svg className="measureLine" viewBox={`0 0 ${containerRef.current?.clientWidth ?? 1} ${containerRef.current?.clientHeight ?? 1}`}>
+              <line
+                className={measurementDelta >= 0 ? "up" : "down"}
+                x1={measurement.startX}
+                y1={measurement.startY}
+                x2={measurement.endX}
+                y2={measurement.endY}
+              />
+            </svg>
+            <div className={`measureLabel ${measurementDelta >= 0 ? "up" : "down"}`} style={{ left: measurementLabelX, top: measurementLabelY }}>
+              <strong>
+                {measurementDelta >= 0 ? "+" : ""}
+                {formatUsd(measurementDelta)}
+              </strong>
+              <span>{measurementPct == null ? "n/a" : formatSignedPercent(measurementPct)}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
       <div className="chartFooter">
         <span>
           {hlHistoryStatus} · {historyStatus}
         </span>
         <span>
-          {displayPoints.length} PM buckets · {displayCandles.length} HL {selectedInterval.label} candles
+          {displayPoints.length} PM buckets · {displayCandles.length} HL {selectedInterval.label} candles · Shift-drag measures %
         </span>
       </div>
     </section>
