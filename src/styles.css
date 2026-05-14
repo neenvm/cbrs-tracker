@@ -496,6 +496,197 @@ h1 {
   position: relative;
 }
 
+.distributionLens {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.lensHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lensHeader div {
+  display: grid;
+  gap: 3px;
+}
+
+.lensHeader span,
+.lensStats span {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lensHeader strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.lensHeader em {
+  color: #5d6674;
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.lensPlot {
+  position: relative;
+  height: 168px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.lensBucket {
+  position: absolute;
+  bottom: 0;
+  display: grid;
+  align-content: end;
+  justify-items: start;
+  min-width: 6px;
+  padding: 5px 5px 6px;
+  border: 1px solid rgba(38, 91, 215, 0.38);
+  border-bottom: 0;
+  border-radius: 0;
+  background: rgba(38, 91, 215, 0.16);
+  color: var(--blue);
+  cursor: pointer;
+  outline: none;
+  overflow: hidden;
+}
+
+.lensBucket.mode {
+  border-color: rgba(18, 125, 91, 0.62);
+  background: rgba(18, 125, 91, 0.2);
+  color: var(--green);
+}
+
+.lensBucket:hover,
+.lensBucket:focus,
+.lensBucket.active {
+  z-index: 6;
+  border-color: var(--ink);
+  background: rgba(31, 37, 46, 0.08);
+  color: var(--ink);
+}
+
+.lensBucket span,
+.lensBucket strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.lensBucket span {
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.lensBucket strong {
+  font-size: 0.72rem;
+}
+
+.lensMarker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 1px;
+  background: var(--ink);
+}
+
+.lensMarker span {
+  position: absolute;
+  top: 7px;
+  left: 5px;
+  padding: 2px 4px;
+  background: var(--ink);
+  color: #fff;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.lensMarker.ipo {
+  background: #8b7358;
+}
+
+.lensMarker.ipo span {
+  background: #8b7358;
+}
+
+.lensMarker.pm {
+  background: var(--blue);
+}
+
+.lensMarker.pm span {
+  background: var(--blue);
+}
+
+.lensMarker.hl {
+  background: var(--red);
+}
+
+.lensMarker.hl span {
+  background: var(--red);
+}
+
+.lensAxis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lensStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.lensStats div {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  padding: 9px 10px;
+  border-right: 1px solid var(--line);
+}
+
+.lensStats div:last-child {
+  border-right: 0;
+}
+
+.lensStats strong {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lensStats small {
+  color: #5d6674;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
 .formulaPanel {
   margin-top: 12px;
   border: 1px solid var(--line);
@@ -1638,6 +1829,20 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .lensStats {
+    grid-template-columns: 1fr;
+  }
+
+  .lensStats div,
+  .lensStats div:last-child {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .lensStats div:last-child {
+    border-bottom: 0;
+  }
+
   .equationStack {
     border-right: 0;
     border-bottom: 1px solid var(--line);
@@ -1698,6 +1903,26 @@ tbody tr:hover {
   .formulaHeader,
   .equationLine {
     grid-template-columns: 1fr;
+  }
+
+  .lensHeader {
+    display: grid;
+  }
+
+  .lensHeader em {
+    text-align: left;
+  }
+
+  .lensPlot {
+    height: 145px;
+  }
+
+  .lensBucket {
+    padding-inline: 3px;
+  }
+
+  .lensBucket span {
+    display: none;
   }
 
   .formulaHeader {

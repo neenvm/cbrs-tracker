@@ -2073,6 +2073,37 @@ function App() {
     (top, row) => (!top || row.probability > top.probability ? row : top),
     null
   );
+  const distributionLensRows = qualityRows.map((row) => {
+    const { low, high } = boundsFor(row);
+    return {
+      ...row,
+      lowPrice: low / OFFICIAL_POST_OFFERING_SHARES,
+      highPrice: high / OFFICIAL_POST_OFFERING_SHARES,
+      centerPrice: midpointFor(row.low, row.high) / OFFICIAL_POST_OFFERING_SHARES
+    };
+  });
+  const lensPrices = [
+    IPO_OFFER_PRICE,
+    polymarketSharePrice,
+    data.hyperPrice,
+    ...distributionLensRows.flatMap((row) => [row.lowPrice, row.highPrice])
+  ].filter((value): value is number => value != null && Number.isFinite(value));
+  const lensRawMin = lensPrices.length ? Math.min(...lensPrices) : IPO_OFFER_PRICE;
+  const lensRawMax = lensPrices.length ? Math.max(...lensPrices) : IPO_OFFER_PRICE + 1;
+  const lensPadding = Math.max(5, (lensRawMax - lensRawMin) * 0.07);
+  const lensMin = Math.max(0, lensRawMin - lensPadding);
+  const lensMax = lensRawMax + lensPadding;
+  const lensSpan = Math.max(lensMax - lensMin, 1);
+  const lensPosition = (price: number) => `${clamp((price - lensMin) / lensSpan) * 100}%`;
+  const probabilityAbovePrice = (price: number) =>
+    distributionLensRows.reduce((sum, row) => {
+      if (price <= row.lowPrice) return sum + row.probability;
+      if (price >= row.highPrice) return sum;
+      const insideBucketShare = (row.highPrice - price) / Math.max(row.highPrice - row.lowPrice, 1);
+      return sum + row.probability * insideBucketShare;
+    }, 0);
+  const probabilityAboveIpo = probabilityAbovePrice(IPO_OFFER_PRICE);
+  const probabilityAboveHl = data.hyperPrice == null ? null : probabilityAbovePrice(data.hyperPrice);
   const weightedQuoteWeight = probabilityTotal
     ? distribution.reduce((sum, row) => sum + row.quoteWeight * row.probability, 0) / probabilityTotal
     : 0;
@@ -2326,6 +2357,78 @@ function App() {
                 </div>
               );
             })}
+          </div>
+          <div className="distributionLens" aria-label="Polymarket distribution skew lens">
+            <div className="lensHeader">
+              <div>
+                <span>Skew lens</span>
+                <strong>Probability by implied closing CBRS price</strong>
+              </div>
+              <em>wide bands are cap brackets; taller bands carry more PM probability</em>
+            </div>
+            <div className="lensPlot">
+              {distributionLensRows.map((row) => {
+                const widthPct = Math.max(((row.highPrice - row.lowPrice) / lensSpan) * 100, 0.8);
+                const heightPct = Math.max((row.probability / maxProbability) * 86, 5);
+                const isMode = topProbabilityRow?.id === row.id;
+                const isActive = hoveredBracket?.id === row.id;
+                return (
+                  <button
+                    aria-label={`${row.label} probability ${formatPercent(row.probability)}, implied close ${formatImpliedPriceRange(row.low, row.high)}`}
+                    className={`lensBucket ${isMode ? "mode" : ""} ${isActive ? "active" : ""}`}
+                    key={row.id}
+                    onBlur={() => setHoveredBracketId(null)}
+                    onFocus={() => setHoveredBracketId(row.id)}
+                    onMouseEnter={() => setHoveredBracketId(row.id)}
+                    onMouseLeave={() => setHoveredBracketId(null)}
+                    style={{
+                      left: lensPosition(row.lowPrice),
+                      width: `${widthPct}%`,
+                      height: `${heightPct}%`
+                    }}
+                    type="button"
+                  >
+                    <span>{row.label}</span>
+                    <strong>{formatPercent(row.probability)}</strong>
+                  </button>
+                );
+              })}
+              <div className="lensMarker ipo" style={{ left: lensPosition(IPO_OFFER_PRICE) }}>
+                <span>IPO {formatUsd(IPO_OFFER_PRICE, 0)}</span>
+              </div>
+              {Number.isFinite(polymarketSharePrice) ? (
+                <div className="lensMarker pm" style={{ left: lensPosition(polymarketSharePrice) }}>
+                  <span>PM {formatUsd(polymarketSharePrice)}</span>
+                </div>
+              ) : null}
+              {data.hyperPrice == null ? null : (
+                <div className="lensMarker hl" style={{ left: lensPosition(data.hyperPrice) }}>
+                  <span>HL {formatUsd(data.hyperPrice)}</span>
+                </div>
+              )}
+            </div>
+            <div className="lensAxis" aria-hidden="true">
+              <span>{formatUsd(lensMin, 0)}</span>
+              <span>{formatUsd((lensMin + lensMax) / 2, 0)}</span>
+              <span>{formatUsd(lensMax, 0)}</span>
+            </div>
+            <div className="lensStats">
+              <div>
+                <span>Most likely bucket</span>
+                <strong>{topProbabilityRow ? topProbabilityRow.label : "n/a"}</strong>
+                <small>{topProbabilityRow ? `${formatPercent(topProbabilityRow.probability)} at ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}` : "Waiting for PM"}</small>
+              </div>
+              <div>
+                <span>PM probability above HL</span>
+                <strong>{probabilityAboveHl == null ? "n/a" : formatPercent(probabilityAboveHl)}</strong>
+                <small>{data.hyperPrice == null ? "Waiting for Hyperliquid" : `Interpolated inside bracket at live HL ${formatUsd(data.hyperPrice)}`}</small>
+              </div>
+              <div>
+                <span>PM probability above IPO</span>
+                <strong>{formatPercent(probabilityAboveIpo)}</strong>
+                <small>Interpolated inside brackets above official $185 IPO</small>
+              </div>
+            </div>
           </div>
           <div className="formulaPanel">
             <div className="formulaHeader">
