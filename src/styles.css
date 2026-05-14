@@ -942,11 +942,12 @@ h1 {
 
 .tradeMonitorGrid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.35fr);
+  grid-template-columns: minmax(240px, 0.62fr) minmax(280px, 0.9fr) minmax(0, 1.25fr);
   gap: 8px;
 }
 
 .tradePressure,
+.quoteFeed,
 .tradeFeed {
   display: grid;
   align-content: start;
@@ -957,12 +958,14 @@ h1 {
 }
 
 .pressureRows,
+.quoteRows,
 .tradeRows {
   display: grid;
   gap: 6px;
 }
 
 .pressureRow,
+.quoteRow,
 .tradeRow {
   border: 1px solid var(--line);
   background: var(--paper);
@@ -982,7 +985,32 @@ h1 {
   min-width: 0;
 }
 
+.quoteRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 0.58fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-left-width: 3px;
+}
+
+.quoteRow.up {
+  border-left-color: var(--green);
+}
+
+.quoteRow.down {
+  border-left-color: var(--red);
+}
+
+.quoteRow div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
 .pressureRow strong,
+.quoteRow strong,
+.quoteRow b,
 .tradeRow strong,
 .tradeRow b {
   color: var(--ink);
@@ -993,6 +1021,9 @@ h1 {
 
 .pressureRow span,
 .pressureRow small,
+.quoteRow span,
+.quoteRow small,
+.quoteRow em,
 .tradeRow span,
 .tradeRow small,
 .tradeRow em,

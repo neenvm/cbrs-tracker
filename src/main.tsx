@@ -82,6 +82,23 @@ type PolymarketTrade = {
   source?: "data" | "clob";
 };
 
+type PolymarketQuoteChange = {
+  asset: string;
+  conditionId: string;
+  timestamp: number;
+  outcome: string;
+  bracketTitle: string;
+  slug: string;
+  eventSlug: string;
+  bestBid: number | null;
+  bestAsk: number | null;
+  midpoint: number;
+  previousMidpoint: number | null;
+  delta: number | null;
+  side?: string;
+  size?: number | null;
+};
+
 type OutcomeTokenRef = {
   tokenId: string;
   conditionId: string;
@@ -209,6 +226,7 @@ type DashboardState = {
   polymarketMidpoints: Record<string, number>;
   polymarketDepth: Record<string, PolymarketDepth>;
   polymarketTrades: PolymarketTrade[];
+  polymarketQuoteChanges: PolymarketQuoteChange[];
   polymarketStreamStatus: "connecting" | "streaming" | "polling";
   hyperPrice: number | null;
   hyperQuality: HyperQuality | null;
@@ -700,6 +718,17 @@ function mergePolymarketTrades(current: PolymarketTrade[], incoming: PolymarketT
   return [...byKey.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 180);
 }
 
+const quoteChangeKey = (change: PolymarketQuoteChange) =>
+  `${change.asset}-${change.timestamp}-${change.midpoint}-${change.bestBid ?? "na"}-${change.bestAsk ?? "na"}-${change.side ?? "na"}-${change.size ?? "na"}`;
+
+function mergePolymarketQuoteChanges(current: PolymarketQuoteChange[], incoming: PolymarketQuoteChange[]) {
+  const byKey = new Map<string, PolymarketQuoteChange>();
+  [...incoming, ...current].forEach((change) => {
+    byKey.set(quoteChangeKey(change), change);
+  });
+  return [...byKey.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
+}
+
 async function fetchHyperMid() {
   const response = await fetch("/hyperliquid-info", {
     method: "POST",
@@ -898,6 +927,7 @@ function useDashboardData() {
     polymarketMidpoints: {},
     polymarketDepth: {},
     polymarketTrades: [],
+    polymarketQuoteChanges: [],
     polymarketStreamStatus: "connecting",
     hyperPrice: null,
     hyperQuality: null,
@@ -995,23 +1025,51 @@ function useDashboardData() {
 	              updateYesDepth(payload.asset_id, summarizePolymarketBook({ asset_id: payload.asset_id, bids: payload.bids, asks: payload.asks, timestamp: String(payload.timestamp ?? "") }));
 	            }
 	            if (payload.event_type === "price_change" && payload.price_changes) {
-	              const midpointUpdates: Record<string, number> = {};
-	              payload.price_changes.forEach((change) => {
-	                if (!yesTokenSet.has(change.asset_id)) return;
-	                const bid = Number(change.best_bid);
-	                const ask = Number(change.best_ask);
-	                const price = Number(change.price);
-	                const midpoint = Number.isFinite(bid) && Number.isFinite(ask) && ask > 0 ? (bid + ask) / 2 : price;
-	                if (Number.isFinite(midpoint)) midpointUpdates[change.asset_id] = midpoint;
-	              });
-	              if (Object.keys(midpointUpdates).length) {
-	                setState((current) => ({
-	                  ...current,
-	                  polymarketMidpoints: { ...current.polymarketMidpoints, ...midpointUpdates },
-	                  polymarketStreamStatus: "streaming",
-	                  polymarketStatus: "live",
-	                  lastUpdated: Date.now()
-	                }));
+	              const relevantChanges = payload.price_changes.filter((change) => yesTokenSet.has(change.asset_id));
+	              if (relevantChanges.length) {
+	                setState((current) => {
+	                  const midpointUpdates: Record<string, number> = {};
+	                  const quoteChanges: PolymarketQuoteChange[] = [];
+	                  relevantChanges.forEach((change) => {
+	                    const ref = refByToken.get(change.asset_id);
+	                    const bid = Number(change.best_bid);
+	                    const ask = Number(change.best_ask);
+	                    const price = Number(change.price);
+	                    const midpoint = Number.isFinite(bid) && Number.isFinite(ask) && ask > 0 ? (bid + ask) / 2 : price;
+	                    if (!ref || !Number.isFinite(midpoint)) return;
+	                    const previousMidpoint = current.polymarketMidpoints[change.asset_id];
+	                    const delta = Number.isFinite(previousMidpoint) ? midpoint - previousMidpoint : null;
+	                    midpointUpdates[change.asset_id] = midpoint;
+	                    if (delta == null || Math.abs(delta) >= 0.0005) {
+	                      quoteChanges.push({
+	                        asset: change.asset_id,
+	                        conditionId: ref.conditionId,
+	                        timestamp: Number(payload.timestamp) > 10_000_000_000 ? Math.floor(Number(payload.timestamp) / 1000) : Number(payload.timestamp) || Math.floor(Date.now() / 1000),
+	                        outcome: ref.outcome,
+	                        bracketTitle: ref.title,
+	                        slug: ref.slug,
+	                        eventSlug: ref.eventSlug,
+	                        bestBid: Number.isFinite(bid) ? bid : null,
+	                        bestAsk: Number.isFinite(ask) ? ask : null,
+	                        midpoint,
+	                        previousMidpoint: Number.isFinite(previousMidpoint) ? previousMidpoint : null,
+	                        delta,
+	                        side: change.side,
+	                        size: toNumber(change.size)
+	                      });
+	                    }
+	                  });
+	                  return {
+	                    ...current,
+	                    polymarketMidpoints: { ...current.polymarketMidpoints, ...midpointUpdates },
+	                    polymarketQuoteChanges: quoteChanges.length
+	                      ? mergePolymarketQuoteChanges(current.polymarketQuoteChanges, quoteChanges)
+	                      : current.polymarketQuoteChanges,
+	                    polymarketStreamStatus: "streaming",
+	                    polymarketStatus: "live",
+	                    lastUpdated: Date.now()
+	                  };
+	                });
 	              }
 	            }
 	            if (payload.event_type === "last_trade_price" && payload.asset_id) {
@@ -1363,6 +1421,26 @@ const summarizeTradePressure = (trades: AnnotatedTrade[]) => {
   return [...byBracket.values()].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
 };
 
+type AnnotatedQuoteChange = PolymarketQuoteChange & {
+  bracketLabel: string;
+  impliedPriceRange: string;
+};
+
+const annotateQuoteChanges = (quoteChanges: PolymarketQuoteChange[], brackets: MarketBracket[]) => {
+  const byCondition = new Map(brackets.map((row) => [row.conditionId, row]));
+  return quoteChanges
+    .map((change) => {
+      const bracket = byCondition.get(change.conditionId);
+      if (!bracket) return null;
+      return {
+        ...change,
+        bracketLabel: bracket.label,
+        impliedPriceRange: formatImpliedPriceRange(bracket.low, bracket.high)
+      };
+    })
+    .filter(Boolean) as AnnotatedQuoteChange[];
+};
+
 const aggregateLineData = (points: PricePoint[], key: "polymarket" | "hyperliquid", intervalMs: number): LineData<UTCTimestamp>[] => {
   const byTime = new Map<number, number>();
   [...points]
@@ -1593,6 +1671,7 @@ function App() {
   const maxQualityTotalVolume = Math.max(...qualityRows.map((row) => row.volumeTotal), 1);
   const maxQualityLiquidity = Math.max(...qualityRows.map((row) => row.liquidity), 1);
   const annotatedTrades = React.useMemo(() => annotateTrades(data.polymarketTrades, allBrackets), [data.polymarketTrades, allBrackets]);
+  const annotatedQuoteChanges = React.useMemo(() => annotateQuoteChanges(data.polymarketQuoteChanges, allBrackets), [data.polymarketQuoteChanges, allBrackets]);
   const tradePressureRows = React.useMemo(() => summarizeTradePressure(annotatedTrades), [annotatedTrades]);
   const largeTradeCutoff = React.useMemo(() => {
     const notionals = annotatedTrades.map((trade) => trade.notional).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
@@ -1735,7 +1814,7 @@ function App() {
           value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
           detail={
             expectedCap
-              ? `${formatVsIpo(polymarketSharePrice)}; using ${(selectedBasis.shares / 1e6).toFixed(1)}m shares`
+              ? `${formatVsIpo(polymarketSharePrice)}; live quote midpoint, not last trade`
               : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
           }
         />
@@ -2037,6 +2116,34 @@ function App() {
                 </div>
               ))}
               {tradePressureRows.length === 0 ? <p className="emptyState">No recent Polymarket trades returned yet.</p> : null}
+            </div>
+          </div>
+
+          <div className="quoteFeed">
+            <div className="depthHeader">
+              <strong>Live quote changes</strong>
+              <span>These can move PM implied without a trade print</span>
+            </div>
+            <div className="quoteRows">
+              {annotatedQuoteChanges.slice(0, 12).map((change) => (
+                <div className={`quoteRow ${change.delta == null || change.delta >= 0 ? "up" : "down"}`} key={quoteChangeKey(change)}>
+                  <div>
+                    <span className="tradeTime">{formatLocalTime(change.timestamp * 1000)}</span>
+                    <strong>{change.bracketLabel}</strong>
+                    <em>{change.impliedPriceRange}</em>
+                  </div>
+                  <div>
+                    <b>{formatPercent(change.midpoint)}</b>
+                    <small>
+                      {change.delta == null ? "new quote" : `${formatSignedPercent(change.delta)} midpoint`} · bid/ask{" "}
+                      {change.bestBid == null ? "n/a" : formatPercent(change.bestBid)} / {change.bestAsk == null ? "n/a" : formatPercent(change.bestAsk)}
+                    </small>
+                  </div>
+                </div>
+              ))}
+              {annotatedQuoteChanges.length === 0 ? (
+                <p className="emptyState">No quote changes observed yet. When best bid/ask moves, PM implied can update here before any matched trade appears.</p>
+              ) : null}
             </div>
           </div>
 
