@@ -1105,6 +1105,14 @@ function useDashboardData() {
 	    let polymarketSocket: WebSocket | null = null;
 	    let polymarketSocketKey = "";
 	    let pollId: number | null = null;
+	    let polymarketPingId: number | null = null;
+
+	    const clearPolymarketPing = () => {
+	      if (polymarketPingId != null) {
+	        window.clearInterval(polymarketPingId);
+	        polymarketPingId = null;
+	      }
+	    };
 
 	    const loadPolymarket = async () => {
 	      try {
@@ -1145,6 +1153,7 @@ function useDashboardData() {
 	      const nextKey = tokenIds.join(",");
 	      if (!tokenIds.length || nextKey === polymarketSocketKey) return;
 	      polymarketSocketKey = nextKey;
+	      clearPolymarketPing();
 	      polymarketSocket?.close();
 	      const refByToken = new Map(outcomeTokenRefs.map((ref) => [ref.tokenId, ref]));
 	      const yesTokenSet = new Set(yesTokenIds);
@@ -1165,10 +1174,20 @@ function useDashboardData() {
 	        setState((current) => ({ ...current, polymarketStreamStatus: "connecting" }));
 	        polymarketSocket.addEventListener("open", () => {
 	          polymarketSocket?.send(JSON.stringify({ assets_ids: tokenIds, type: "market", custom_feature_enabled: true }));
+	          clearPolymarketPing();
+	          polymarketPingId = window.setInterval(() => {
+	            if (polymarketSocket?.readyState === WebSocket.OPEN) polymarketSocket.send("PING");
+	          }, 10_000);
 	          setState((current) => ({ ...current, polymarketStreamStatus: "streaming", polymarketStatus: "live" }));
 	        });
 	        polymarketSocket.addEventListener("message", (event) => {
-	          const parsed = JSON.parse(event.data as string) as unknown;
+	          const rawMessage = event.data as string;
+	          if (rawMessage === "PONG") return;
+	          if (rawMessage === "PING") {
+	            polymarketSocket?.send("PONG");
+	            return;
+	          }
+	          const parsed = JSON.parse(rawMessage) as unknown;
 	          const messages = Array.isArray(parsed) ? parsed : [parsed];
 	          messages.forEach((message) => {
 	            const payload = message as {
@@ -1181,10 +1200,67 @@ function useDashboardData() {
 	              price?: string | number;
 	              size?: string | number;
 	              side?: string;
+	              best_bid?: string | number;
+	              best_ask?: string | number;
+	              spread?: string | number;
 	              price_changes?: Array<{ asset_id: string; best_bid?: string; best_ask?: string; price?: string; size?: string; side?: string }>;
 	            };
 	            if (payload.event_type === "book" && payload.asset_id && payload.bids && payload.asks) {
 	              updateYesDepth(payload.asset_id, summarizePolymarketBook({ asset_id: payload.asset_id, bids: payload.bids, asks: payload.asks, timestamp: String(payload.timestamp ?? "") }));
+	            }
+	            if (payload.event_type === "best_bid_ask" && payload.asset_id && yesTokenSet.has(payload.asset_id)) {
+	              const ref = refByToken.get(payload.asset_id);
+	              const bid = toNumber(payload.best_bid);
+	              const ask = toNumber(payload.best_ask);
+	              if (!ref || bid == null || ask == null) return;
+	              const midpoint = (bid + ask) / 2;
+	              if (!Number.isFinite(midpoint)) return;
+	              setState((current) => {
+	                const existingDepth = current.polymarketDepth[payload.asset_id as string];
+	                const previousMidpoint = current.polymarketMidpoints[payload.asset_id as string];
+	                const delta = Number.isFinite(previousMidpoint) ? midpoint - previousMidpoint : null;
+	                const depth: PolymarketDepth = {
+	                  bidDepth2c: existingDepth?.bidDepth2c ?? 0,
+	                  askDepth2c: existingDepth?.askDepth2c ?? 0,
+	                  bestBid: bid,
+	                  bestAsk: ask,
+	                  spread: toNumber(payload.spread) ?? ask - bid,
+	                  bidLevels: existingDepth?.bidLevels ?? [],
+	                  askLevels: existingDepth?.askLevels ?? []
+	                };
+	                const quoteChanges =
+	                  delta == null || Math.abs(delta) >= 0.0005
+	                    ? [
+	                        {
+	                          asset: payload.asset_id as string,
+	                          conditionId: ref.conditionId,
+	                          timestamp: Number(payload.timestamp) > 10_000_000_000 ? Math.floor(Number(payload.timestamp) / 1000) : Number(payload.timestamp) || Math.floor(Date.now() / 1000),
+	                          outcome: ref.outcome,
+	                          bracketTitle: ref.title,
+	                          slug: ref.slug,
+	                          eventSlug: ref.eventSlug,
+	                          bestBid: bid,
+	                          bestAsk: ask,
+	                          midpoint,
+	                          previousMidpoint: Number.isFinite(previousMidpoint) ? previousMidpoint : null,
+	                          delta,
+	                          side: "BBO",
+	                          size: null
+	                        }
+	                      ]
+	                    : [];
+	                return {
+	                  ...current,
+	                  polymarketMidpoints: { ...current.polymarketMidpoints, [payload.asset_id as string]: midpoint },
+	                  polymarketDepth: { ...current.polymarketDepth, [payload.asset_id as string]: depth },
+	                  polymarketQuoteChanges: quoteChanges.length
+	                    ? mergePolymarketQuoteChanges(current.polymarketQuoteChanges, quoteChanges)
+	                    : current.polymarketQuoteChanges,
+	                  polymarketStreamStatus: "streaming",
+	                  polymarketStatus: "live",
+	                  lastUpdated: Date.now()
+	                };
+	              });
 	            }
 	            if (payload.event_type === "price_change" && payload.price_changes) {
 	              const relevantChanges = payload.price_changes.filter((change) => yesTokenSet.has(change.asset_id));
@@ -1281,9 +1357,11 @@ function useDashboardData() {
 	          });
 	        });
 	        polymarketSocket.addEventListener("error", () => {
+	          clearPolymarketPing();
 	          setState((current) => ({ ...current, polymarketStreamStatus: "polling" }));
 	        });
 	        polymarketSocket.addEventListener("close", () => {
+	          clearPolymarketPing();
 	          if (!cancelled) {
 	            setState((current) => ({ ...current, polymarketStreamStatus: "polling" }));
 	            polymarketSocketKey = "";
@@ -1365,6 +1443,7 @@ function useDashboardData() {
     return () => {
 	      cancelled = true;
 	      if (pollId) window.clearInterval(pollId);
+	      clearPolymarketPing();
 	      hyperSocket?.close();
 	      polymarketSocket?.close();
 	    };
