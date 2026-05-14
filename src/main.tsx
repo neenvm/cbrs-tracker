@@ -2229,6 +2229,18 @@ function App() {
   const lensMax = lensRawMax + lensPadding;
   const lensSpan = Math.max(lensMax - lensMin, 1);
   const lensPosition = (price: number) => `${clamp((price - lensMin) / lensSpan) * 100}%`;
+  const bracketReliability = (row: (typeof distributionLensRows)[number]) => {
+    const spread = row.bid != null && row.ask != null ? row.ask - row.bid : null;
+    const spreadQuality =
+      spread == null ? 0.55 : spread >= 0.2 ? 0.25 : spread >= 0.12 ? 0.4 : spread >= 0.08 ? 0.55 : spread >= 0.05 ? 0.72 : 0.95;
+    const depthQuality = clamp(Math.log10(1 + row.depthTotal) / Math.log10(501));
+    const confidenceQuality = row.priceConfidence === "high" ? 0.95 : row.priceConfidence === "medium" ? 0.75 : 0.55;
+    return clamp(0.2 + spreadQuality * 0.35 + depthQuality * 0.25 + confidenceQuality * 0.2, 0.25, 0.95);
+  };
+  const distributionReliability = probabilityTotal
+    ? distributionLensRows.reduce((sum, row) => sum + row.probability * bracketReliability(row), 0) / probabilityTotal
+    : 0;
+  const qualityAdjustProbability = (probability: number) => 0.5 + (probability - 0.5) * distributionReliability;
   const probabilityAbovePrice = (price: number) =>
     distributionLensRows.reduce((sum, row) => {
       if (price <= row.lowPrice) return sum + row.probability;
@@ -2237,7 +2249,8 @@ function App() {
       return sum + row.probability * insideBucketShare;
     }, 0);
   const probabilityAboveIpo = probabilityAbovePrice(IPO_OFFER_PRICE);
-  const probabilityAboveHl = data.hyperPrice == null ? null : probabilityAbovePrice(data.hyperPrice);
+  const probabilityAboveHlRaw = data.hyperPrice == null ? null : probabilityAbovePrice(data.hyperPrice);
+  const probabilityAboveHlAdjusted = probabilityAboveHlRaw == null ? null : qualityAdjustProbability(probabilityAboveHlRaw);
   const weightedQuoteWeight = probabilityTotal
     ? distribution.reduce((sum, row) => sum + row.quoteWeight * row.probability, 0) / probabilityTotal
     : 0;
@@ -2393,14 +2406,14 @@ function App() {
         />
         <MetricCard
           icon={<Activity size={22} />}
-          label="PM prob close > HL"
-          value={probabilityAboveHl == null ? "Loading" : formatPercent(probabilityAboveHl)}
+          label="Adj PM close > HL"
+          value={probabilityAboveHlAdjusted == null ? "Loading" : formatPercent(probabilityAboveHlAdjusted)}
           detail={
             data.hyperPrice == null
               ? "Waiting for live Hyperliquid price"
-              : `PM distribution above live HL ${formatUsd(data.hyperPrice)}; interpolated inside bracket`
+              : `Raw PM ${probabilityAboveHlRaw == null ? "n/a" : formatPercent(probabilityAboveHlRaw)}; reliability haircut ${formatPercent(distributionReliability)}`
           }
-          tone={probabilityAboveHl == null ? "neutral" : probabilityAboveHl >= 0.5 ? "positive" : "negative"}
+          tone={probabilityAboveHlAdjusted == null ? "neutral" : probabilityAboveHlAdjusted >= 0.5 ? "positive" : "negative"}
         />
         <MetricCard
           icon={<Activity size={22} />}
@@ -2577,9 +2590,13 @@ function App() {
                 <small>{topProbabilityRow ? `${formatPercent(topProbabilityRow.probability)} at ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}` : "Waiting for PM"}</small>
               </div>
               <div>
-                <span>PM probability above HL</span>
-                <strong>{probabilityAboveHl == null ? "n/a" : formatPercent(probabilityAboveHl)}</strong>
-                <small>{data.hyperPrice == null ? "Waiting for Hyperliquid" : `Interpolated inside bracket at live HL ${formatUsd(data.hyperPrice)}`}</small>
+                <span>Adj PM above HL</span>
+                <strong>{probabilityAboveHlAdjusted == null ? "n/a" : formatPercent(probabilityAboveHlAdjusted)}</strong>
+                <small>
+                  {data.hyperPrice == null
+                    ? "Waiting for Hyperliquid"
+                    : `Raw ${probabilityAboveHlRaw == null ? "n/a" : formatPercent(probabilityAboveHlRaw)} at live HL ${formatUsd(data.hyperPrice)}`}
+                </small>
               </div>
               <div>
                 <span>PM probability above IPO</span>
@@ -2641,6 +2658,11 @@ function App() {
                   <small>Probability-weighted live quote influence after spread/depth caps</small>
                 </div>
                 <div>
+                  <span>Distribution reliability</span>
+                  <strong>{formatPercent(distributionReliability)}</strong>
+                  <small>Used to shrink threshold probabilities toward 50/50 when books are wide, shallow, or low-confidence</small>
+                </div>
+                <div>
                   <span>Wide-spread mass</span>
                   <strong>{formatPercent(wideSpreadMass)}</strong>
                   <small>Bracket probability with at least 8c bid/ask spread; quote influence is capped</small>
@@ -2669,7 +2691,8 @@ function App() {
             {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no
             current prices are backfilled into historical points. Polymarket buckets are coarse: each $10B market-cap bracket is about{" "}
             {formatUsd(10e9 / OFFICIAL_POST_OFFERING_SHARES, 2)} wide per CBRS share. Quantile math assumes outcomes are uniformly distributed inside each
-            bracket; the open-ended {">= $100B"} bracket is capped at $110B.
+            bracket; the open-ended {">= $100B"} bracket is capped at $110B. Threshold metrics such as close above HL are quality-adjusted market-implied
+            signals: they shrink raw PM probabilities toward 50/50 when the underlying bracket books are wide, shallow, or low-confidence.
           </p>
         </div>
       </section>
