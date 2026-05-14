@@ -255,6 +255,7 @@ const IPO_OFFERED_SHARES = 30_000_000;
 const IPO_OVERALLOTMENT_SHARES = 4_500_000;
 const OFFICIAL_POST_OFFERING_SHARES = 215_228_541;
 const OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES = 219_728_541;
+const POTENTIAL_DILUTED_SCENARIO_SHARES = 308_116_278;
 
 const SHARE_BASES: ShareBasis[] = [
   {
@@ -272,7 +273,7 @@ const SHARE_BASES: ShareBasis[] = [
   {
     id: "official-potential-diluted",
     label: "If listed dilutives convert",
-    shares: 308_116_278,
+    shares: POTENTIAL_DILUTED_SCENARIO_SHARES,
     note: "Scenario only: listed options, RSUs, PRSUs, warrants, and post-Dec Class N become shares. Not day-one float; not assumed to happen all at once."
   }
 ];
@@ -1823,6 +1824,7 @@ function App() {
   const officialIpoCap = IPO_OFFER_PRICE * OFFICIAL_POST_OFFERING_SHARES;
   const hyperImpliedCap = data.hyperPrice == null ? null : data.hyperPrice * OFFICIAL_POST_OFFERING_SHARES;
   const officialIpoCapWithOption = IPO_OFFER_PRICE * OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES;
+  const impliedFullyDilutedCap = IPO_OFFER_PRICE * POTENTIAL_DILUTED_SCENARIO_SHARES;
   const grossProceeds = IPO_OFFER_PRICE * IPO_OFFERED_SHARES;
   const grossProceedsWithOption = IPO_OFFER_PRICE * (IPO_OFFERED_SHARES + IPO_OVERALLOTMENT_SHARES);
   const offeredFloatPct = IPO_OFFERED_SHARES / OFFICIAL_POST_OFFERING_SHARES;
@@ -2470,6 +2472,11 @@ function App() {
           <DetailItem label="Option-adjusted float" value="34.5m" note={`If the 4.5m underwriter option is fully exercised, float becomes ${formatPercent(offeredFloatWithOptionPct)} of option-adjusted post-offering shares.`} />
           <DetailItem label="Gross proceeds" value={formatCompactUsd(grossProceeds)} note={`Before discounts/expenses; ${formatCompactUsd(grossProceedsWithOption)} if the option is fully exercised.`} />
           <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`Uses 215.228541m post-offering shares; ${formatCompactUsd(officialIpoCapWithOption)} with over-allotment.`} />
+          <DetailItem
+            label="Implied fully diluted cap"
+            value={formatCompactUsd(impliedFullyDilutedCap)}
+            note={`Scenario at $185 using ${(POTENTIAL_DILUTED_SCENARIO_SHARES / 1e6).toFixed(3)}m listed-dilutive shares; not the headline resolution denominator.`}
+          />
           <DetailItem label="Base float percent" value={formatPercent(offeredFloatPct)} note="30.0m IPO shares divided by 215.228541m post-offering shares; this is separate from the market-cap denominator." />
           <DetailItem label="Non-float context" value="185.2m Class B" note="Class B holders retain most economic ownership and about 99.2% of voting power; lock-up and market-standoff restrictions apply with exceptions." />
           <DetailItem label="PM closing vs offer" value={`${offerToPm >= 0 ? "+" : ""}${formatUsd(offerToPm)}`} note={`${offerToPm >= 0 ? "+" : ""}${formatPercent(offerToPm / IPO_OFFER_PRICE)} versus $185.`} />
