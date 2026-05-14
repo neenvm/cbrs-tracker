@@ -1780,6 +1780,20 @@ function App() {
   const annotatedTrades = React.useMemo(() => annotateTrades(data.polymarketTrades, allBrackets), [data.polymarketTrades, allBrackets]);
   const annotatedQuoteChanges = React.useMemo(() => annotateQuoteChanges(data.polymarketQuoteChanges, allBrackets), [data.polymarketQuoteChanges, allBrackets]);
   const tradePressureRows = React.useMemo(() => summarizeTradePressure(annotatedTrades), [annotatedTrades]);
+  const pressureTotals = React.useMemo(
+    () =>
+      tradePressureRows.reduce(
+        (totals, row) => ({
+          up: totals.up + row.up,
+          down: totals.down + row.down,
+          count: totals.count + row.count
+        }),
+        { up: 0, down: 0, count: 0 }
+      ),
+    [tradePressureRows]
+  );
+  const pressureNet = pressureTotals.up - pressureTotals.down;
+  const pressureTotalFlow = pressureTotals.up + pressureTotals.down;
   const largeTradeCutoff = React.useMemo(() => {
     const notionals = annotatedTrades.map((trade) => trade.notional).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
     return Math.max(250, notionals[Math.floor(notionals.length * 0.9)] ?? 0);
@@ -2222,11 +2236,25 @@ function App() {
         <div className="tradeMonitorGrid">
           <div className="tradePressure">
             <div className="depthHeader">
-              <strong>15m net flow by bracket</strong>
-              <span>Green buys push that bracket higher; red sells push it lower</span>
+              <strong>Last 15m flow</strong>
+              <span>Matched trades grouped by closing-cap bracket</span>
+            </div>
+            <div className={`pressureSummary ${pressureNet >= 0 ? "up" : "down"}`}>
+              <span>Net bracket pressure</span>
+              <strong>{formatSignedCompactUsd(pressureNet)}</strong>
+              <small>
+                {pressureNet >= 0 ? "Buyers lifted bracket odds" : "Sellers lowered bracket odds"} across {pressureTotals.count} trade{pressureTotals.count === 1 ? "" : "s"}
+              </small>
+              <div className="flowSplit" aria-hidden="true">
+                <span className="buyFlow" style={{ width: pressureShare(pressureTotals.up, pressureTotalFlow) }} />
+                <span className="sellFlow" style={{ width: pressureShare(pressureTotals.down, pressureTotalFlow) }} />
+              </div>
+              <em>
+                Buy pressure {formatCompactUsd(pressureTotals.up)} · sell pressure {formatCompactUsd(pressureTotals.down)}
+              </em>
             </div>
             <div className="pressureRows" aria-label="Polymarket net flow by bracket">
-              {tradePressureRows.slice(0, 6).map((row) => {
+              {tradePressureRows.slice(0, 4).map((row) => {
                 const totalFlow = row.up + row.down;
                 return (
                   <div className={`pressureRow ${row.net >= 0 ? "up" : "down"}`} key={`pressure-${row.label}`}>
@@ -2245,13 +2273,14 @@ function App() {
                       <span className="sellFlow" style={{ width: pressureShare(row.down, totalFlow) }} />
                     </div>
                     <small>
-                      Buying pressure {formatCompactUsd(row.up)} · selling pressure {formatCompactUsd(row.down)} · {row.count} trade{row.count === 1 ? "" : "s"}
+                      Buy {formatCompactUsd(row.up)} · sell {formatCompactUsd(row.down)} · {row.count} trade{row.count === 1 ? "" : "s"}
                     </small>
                   </div>
                 );
               })}
               {tradePressureRows.length === 0 ? <p className="emptyState">No recent Polymarket trades returned yet.</p> : null}
             </div>
+            <p className="pressureNote">Use this as a quick "which bracket drove the move?" summary. The tape to the right shows the individual prints.</p>
           </div>
 
           <div className="quoteFeed">

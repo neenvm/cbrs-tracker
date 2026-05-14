@@ -944,7 +944,7 @@ h1 {
   display: grid;
   grid-template-columns: minmax(240px, 0.58fr) minmax(360px, 1fr) minmax(420px, 1.15fr);
   gap: 8px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .tradePressure,
@@ -957,6 +957,11 @@ h1 {
   padding: 10px;
   border: 1px solid var(--line);
   background: var(--paper-2);
+}
+
+.tradePressure {
+  grid-template-rows: auto auto auto auto;
+  align-self: start;
 }
 
 .quoteFeed {
@@ -1007,6 +1012,53 @@ h1 {
 .tradeRow {
   border: 1px solid var(--line);
   background: var(--paper);
+}
+
+.pressureSummary {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  background: var(--paper);
+}
+
+.pressureSummary.up {
+  border-left-color: var(--green);
+}
+
+.pressureSummary.down {
+  border-left-color: var(--red);
+}
+
+.pressureSummary span,
+.pressureSummary em,
+.pressureNote {
+  color: #5d6674;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.pressureSummary span {
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pressureSummary strong {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pressureSummary small {
+  color: #5d6674;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.pressureSummary em {
+  font-style: normal;
 }
 
 .pressureRow {
@@ -1150,6 +1202,11 @@ h1 {
 
 .pressureRow small {
   color: #5d6674;
+}
+
+.pressureNote {
+  margin: 0;
+  padding: 0 2px;
 }
 
 .upText {
