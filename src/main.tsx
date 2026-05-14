@@ -278,8 +278,8 @@ const POLYMARKET_HISTORY_BUCKET_SECONDS = POLYMARKET_HISTORY_FIDELITY_MINUTES * 
 const IPO_OFFER_PRICE = 185;
 const IPO_OFFERED_SHARES = 30_000_000;
 const IPO_OVERALLOTMENT_SHARES = 4_500_000;
-const OFFICIAL_POST_OFFERING_SHARES = 215_228_541;
-const OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES = 219_728_541;
+const OFFICIAL_POST_OFFERING_SHARES = 219_295_148;
+const OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES = 223_795_148;
 const POTENTIAL_DILUTED_SCENARIO_SHARES = 308_116_278;
 
 const SHARE_BASES: ShareBasis[] = [
@@ -287,13 +287,13 @@ const SHARE_BASES: ShareBasis[] = [
     id: "official-basic",
     label: "Headline denominator",
     shares: OFFICIAL_POST_OFFERING_SHARES,
-    note: "Current official market-cap denominator: 30.0m IPO Class A shares plus 185.228541m Class B shares."
+    note: "Current official market-cap denominator from the May 14 S-8 reoffer prospectus: 30.0m Class A, 185.613148m Class B, and 3.682m Class N shares."
   },
   {
     id: "official-overallotment",
     label: "If banks exercise option",
     shares: OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES,
-    note: "Adds the 4.5m underwriter option. This can increase public shares after the IPO; it is not assumed in the headline."
+    note: "Adds the 4.5m underwriter option to the latest official share base. This can increase public shares after the IPO; it is not assumed in the headline."
   },
   {
     id: "official-potential-diluted",
@@ -584,21 +584,22 @@ const deriveRobustYesPrice = ({
 
   const spreadScore = spread == null ? 0.45 : clamp((0.1 - spread) / 0.08);
   const depthScore = clamp(Math.log10(1 + nearTouchDepth) / Math.log10(501));
-  const divergencePenalty = clamp(Math.abs(quote - reference) / 0.08);
-  const rawQuoteWeight = clamp(0.18 + spreadScore * 0.42 + depthScore * 0.3 - divergencePenalty * 0.2, 0.15, 0.85);
+  const divergence = Math.abs(quote - reference);
+  const rawQuoteWeight = clamp(0.62 + spreadScore * 0.18 + depthScore * 0.12, 0.55, 0.92);
   const spreadCap =
-    spread == null ? 0.42 : spread >= 0.2 ? 0.12 : spread >= 0.12 ? 0.2 : spread >= 0.08 ? 0.3 : spread >= 0.05 ? 0.5 : 0.85;
-  const depthCap = nearTouchDepth < 10 ? 0.22 : nearTouchDepth < 50 ? 0.36 : nearTouchDepth < 100 ? 0.55 : 0.85;
-  const quoteWeight = clamp(Math.min(rawQuoteWeight, spreadCap, depthCap), 0.15, 0.85);
+    spread == null ? 0.7 : spread >= 0.2 ? 0.42 : spread >= 0.12 ? 0.55 : spread >= 0.08 ? 0.68 : spread >= 0.05 ? 0.8 : 0.92;
+  const depthCap = nearTouchDepth < 10 ? 0.62 : nearTouchDepth < 50 ? 0.74 : nearTouchDepth < 100 ? 0.84 : 0.92;
+  const divergenceFloor = divergence >= 0.08 && spread != null && spread <= 0.1 ? 0.78 : 0.55;
+  const quoteWeight = clamp(Math.min(rawQuoteWeight, spreadCap, depthCap), Math.min(divergenceFloor, spreadCap, depthCap), 0.92);
   const yesPrice = clamp(quote * quoteWeight + reference * (1 - quoteWeight));
-  const priceConfidence: PriceConfidence = quoteWeight >= 0.68 && nearTouchDepth >= 75 ? "high" : quoteWeight >= 0.42 ? "medium" : "low";
+  const priceConfidence: PriceConfidence = quoteWeight >= 0.78 && spread != null && spread <= 0.08 ? "high" : quoteWeight >= 0.62 ? "medium" : "low";
 
   return {
     yesPrice,
     quoteMidpoint: quote,
     referencePrice: reference,
     quoteWeight,
-    priceBasis: "robust quote/trade blend",
+    priceBasis: divergence >= 0.08 ? "CLOB-weighted; page price stale/divergent" : "robust quote/trade blend",
     priceConfidence
   };
 };
@@ -619,9 +620,12 @@ const marketToBracket = (
   const tokenId = tokens[yesIndex] ?? "";
   const bookDepth = depth[tokenId];
   const isClosed = isPolymarketMarketClosed(market);
-  const bid = isClosed ? null : bookDepth?.bestBid ?? market.bestBid;
-  const ask = isClosed ? null : bookDepth?.bestAsk ?? market.bestAsk;
-  const quoteMidpoint = isClosed ? null : finiteOrNull(midpoints[tokenId]) ?? (bid != null && ask != null ? (bid + ask) / 2 : null);
+  const rawBid = bookDepth?.bestBid ?? market.bestBid;
+  const rawAsk = bookDepth?.bestAsk ?? market.bestAsk;
+  const bid = isClosed || rawBid == null || rawAsk == null || rawAsk < rawBid ? (isClosed ? null : market.bestBid) : rawBid;
+  const ask = isClosed || rawBid == null || rawAsk == null || rawAsk < rawBid ? (isClosed ? null : market.bestAsk) : rawAsk;
+  const bboMidpoint = bid != null && ask != null ? (bid + ask) / 2 : null;
+  const quoteMidpoint = isClosed ? null : bboMidpoint ?? finiteOrNull(midpoints[tokenId]);
   const pageYesPrice = finiteOrNull(prices[yesIndex]);
   const robustPrice = deriveRobustYesPrice({
     quoteMidpoint,
@@ -805,16 +809,21 @@ const toNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-function summarizePolymarketBook(book: PolymarketBook): PolymarketDepth {
+function summarizePolymarketBook(
+  book: PolymarketBook,
+  topOfBook?: { bestBid: number | null; bestAsk: number | null; spread: number | null }
+): PolymarketDepth {
   const bids = book.bids
     .map((level) => ({ price: Number(level.price), size: Number(level.size) }))
     .filter((level) => Number.isFinite(level.price) && Number.isFinite(level.size));
   const asks = book.asks
     .map((level) => ({ price: Number(level.price), size: Number(level.size) }))
     .filter((level) => Number.isFinite(level.price) && Number.isFinite(level.size));
-  const bestBid = bids.length ? Math.max(...bids.map((level) => level.price)) : null;
-  const bestAsk = asks.length ? Math.min(...asks.map((level) => level.price)) : null;
-  const spread = bestBid != null && bestAsk != null ? bestAsk - bestBid : null;
+  const rawBestBid = bids.length ? Math.max(...bids.map((level) => level.price)) : null;
+  const rawBestAsk = asks.length ? Math.min(...asks.map((level) => level.price)) : null;
+  const bestBid = topOfBook?.bestBid ?? rawBestBid;
+  const bestAsk = topOfBook?.bestAsk ?? rawBestAsk;
+  const spread = topOfBook?.spread ?? (bestBid != null && bestAsk != null ? bestAsk - bestBid : null);
   const bidFloor = bestBid == null ? null : Math.max(bestBid - 0.02, 0);
   const askCeiling = bestAsk == null ? null : Math.min(bestAsk + 0.02, 1);
   const bidDepth2c = bidFloor == null ? 0 : bids.filter((level) => level.price >= bidFloor).reduce((sum, level) => sum + level.price * level.size, 0);
@@ -834,14 +843,38 @@ function summarizePolymarketBook(book: PolymarketBook): PolymarketDepth {
 
 async function fetchPolymarketBooks(tokenIds: string[]) {
   if (tokenIds.length === 0) return {};
-  const response = await fetch("/polymarket-clob/books", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(tokenIds.map((token_id) => ({ token_id })))
-  });
-  if (!response.ok) throw new Error(`Polymarket CLOB books returned ${response.status}`);
-  const books = (await response.json()) as PolymarketBook[];
-  return Object.fromEntries(books.map((book) => [book.asset_id, summarizePolymarketBook(book)]));
+  const [booksResponse, pricesResponse, spreadsResponse] = await Promise.all([
+    fetch("/polymarket-clob/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(tokenIds.map((token_id) => ({ token_id })))
+    }),
+    fetch("/polymarket-clob/prices", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(tokenIds.flatMap((token_id) => [{ token_id, side: "BUY" }, { token_id, side: "SELL" }]))
+    }),
+    fetch("/polymarket-clob/spreads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(tokenIds.map((token_id) => ({ token_id })))
+    })
+  ]);
+  if (!booksResponse.ok) throw new Error(`Polymarket CLOB books returned ${booksResponse.status}`);
+  const books = (await booksResponse.json()) as PolymarketBook[];
+  const prices = pricesResponse.ok ? ((await pricesResponse.json()) as Record<string, { BUY?: string; SELL?: string }>) : {};
+  const spreads = spreadsResponse.ok ? ((await spreadsResponse.json()) as Record<string, string>) : {};
+  const topOfBook = Object.fromEntries(
+    tokenIds.flatMap((tokenId) => {
+      const buy = toNumber(prices[tokenId]?.BUY);
+      const sell = toNumber(prices[tokenId]?.SELL);
+      if (buy == null || sell == null) return [];
+      const bestBid = Math.min(buy, sell);
+      const bestAsk = Math.max(buy, sell);
+      return [[tokenId, { bestBid, bestAsk, spread: toNumber(spreads[tokenId]) ?? bestAsk - bestBid }]];
+    })
+  ) as Record<string, { bestBid: number | null; bestAsk: number | null; spread: number | null }>;
+  return Object.fromEntries(books.map((book) => [book.asset_id, summarizePolymarketBook(book, topOfBook[book.asset_id])]));
 }
 
 async function fetchPolymarketTrades(conditionIds: string[]) {
@@ -2034,7 +2067,7 @@ function PriceComparisonChart({
       <div className="panelHeader chartHeader">
         <div>
           <p>Market Chart</p>
-          <h2>PM implied closing CBRS vs Hyperliquid</h2>
+          <h2>PM midpoint close model vs Hyperliquid</h2>
         </div>
         <div className="rangeControls" aria-label="Candle interval">
           <span>Candles</span>
@@ -2387,11 +2420,11 @@ function App() {
         />
         <MetricCard
           icon={<Scale size={22} />}
-          label="PM implied closing CBRS"
+          label="PM midpoint close model"
           value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
           detail={
             expectedCap
-              ? `${formatVsIpo(polymarketSharePrice)}; robust quote/trade blend`
+              ? `${formatVsIpo(polymarketSharePrice)}; assumes midpoint inside each PM bracket`
               : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
           }
         />
@@ -2424,9 +2457,9 @@ function App() {
         />
         <MetricCard
           icon={<Activity size={22} />}
-          label="HL premium / discount"
+          label="HL vs PM midpoint"
           value={spread == null ? "Loading" : `${spread >= 0 ? "+" : ""}${formatUsd(spread)}`}
-          detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus PM closing`}
+          detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus midpoint model`}
           tone={spread == null ? "neutral" : spread >= 0 ? "positive" : "negative"}
         />
         <MetricCard
@@ -2447,8 +2480,8 @@ function App() {
           value={hyperImpliedCap == null ? "Loading" : formatCompactUsd(hyperImpliedCap)}
           detail={
             hyperImpliedCap == null || data.hyperPrice == null
-              ? "Hyperliquid price x 215.2m official shares"
-              : `${formatUsd(data.hyperPrice)} x 215.2m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
+              ? "Hyperliquid price x 219.3m official shares"
+              : `${formatUsd(data.hyperPrice)} x 219.3m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
                   (hyperImpliedCap - officialIpoCap) / officialIpoCap
                 )} vs IPO cap`
           }
@@ -2466,13 +2499,13 @@ function App() {
             </div>
           </div>
           <div className="methodFormula">
-            <span>PM implied closing CBRS</span>
+            <span>PM midpoint close model</span>
             <strong>
               E[first-day closing market cap] / {new Intl.NumberFormat("en-US").format(OFFICIAL_POST_OFFERING_SHARES)} shares
             </strong>
           </div>
           <p className="basisNote">
-            The headline comparison uses the current official post-offering share count from the latest S-1/A. The rows below are denominator checks:
+            The headline comparison uses the current official share count from the May 14 S-8 reoffer prospectus, which is newer than the last S-1/A. The rows below are denominator checks:
             they show how the PM implied price changes if more shares are included, but they do not mean those shares are day-one float and they do not
             drive the main dashboard.
           </p>
@@ -2698,7 +2731,7 @@ function App() {
             </div>
           </div>
           <p className="caption">
-            The definitive PM closing value is the expected first-day closing market cap from a robust live distribution, divided by the official
+            The PM midpoint close model is the expected first-day closing market cap from a robust live distribution, divided by the latest official
             post-offering share count. The bracket rows show both Polymarket's raw page Yes price and this dashboard's blended probability; they can differ
             because the two Polymarket pages are separate binary markets that are anchored through the &lt;$50B / at least $50B overlap before normalization.
             Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
@@ -3039,13 +3072,13 @@ function App() {
           <DetailItem label="Base IPO float" value="30.0m" note="Class A shares sold in the IPO; this is the day-one public float before any underwriter option exercise." />
           <DetailItem label="Option-adjusted float" value="34.5m" note={`If the 4.5m underwriter option is fully exercised, float becomes ${formatPercent(offeredFloatWithOptionPct)} of option-adjusted post-offering shares.`} />
           <DetailItem label="Gross proceeds" value={formatCompactUsd(grossProceeds)} note={`Before discounts/expenses; ${formatCompactUsd(grossProceedsWithOption)} if the option is fully exercised.`} />
-          <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`Uses 215.228541m post-offering shares; ${formatCompactUsd(officialIpoCapWithOption)} with over-allotment.`} />
+          <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`Uses 219.295148m latest official shares; ${formatCompactUsd(officialIpoCapWithOption)} with over-allotment.`} />
           <DetailItem
             label="Implied fully diluted cap"
             value={formatCompactUsd(impliedFullyDilutedCap)}
             note={`Scenario at $185 using ${(POTENTIAL_DILUTED_SCENARIO_SHARES / 1e6).toFixed(3)}m listed-dilutive shares; not the headline resolution denominator.`}
           />
-          <DetailItem label="Base float percent" value={formatPercent(offeredFloatPct)} note="30.0m IPO shares divided by 215.228541m post-offering shares; this is separate from the market-cap denominator." />
+          <DetailItem label="Base float percent" value={formatPercent(offeredFloatPct)} note="30.0m IPO shares divided by 219.295148m latest official shares; this is separate from the market-cap denominator." />
           <DetailItem label="Non-float context" value="185.2m Class B" note="Class B holders retain most economic ownership and about 99.2% of voting power; lock-up and market-standoff restrictions apply with exceptions." />
           <DetailItem label="PM closing vs offer" value={`${offerToPm >= 0 ? "+" : ""}${formatUsd(offerToPm)}`} note={`${offerToPm >= 0 ? "+" : ""}${formatPercent(offerToPm / IPO_OFFER_PRICE)} versus $185.`} />
           <DetailItem
@@ -3058,12 +3091,12 @@ function App() {
         <div className="watchList">
           <strong>Price-action notes</strong>
           <span>
-            The offer price implies about {formatCompactUsd(officialIpoCap)} on the official post-offering share count, while the live Polymarket expected
+            The offer price implies about {formatCompactUsd(officialIpoCap)} on the latest official share count, while the live Polymarket midpoint-model
             value is {formatCompactUsd(expectedCap)}. The S-1/A says Class B holders retain about 85.3% of shares and 99.2% of voting power after the
             offering, and lock-up/market-standoff restrictions generally run until the earlier of the second trading day after Q3 2026 earnings or 180 days
             after the prospectus date, with exceptions including some sell-to-cover activity. The S-1/A also highlights 2025 revenue of $510.0m, up 76%
             year over year, a multi-year OpenAI deal valued at more than $20B for 750 megawatts, and an AWS term sheet with binding provisions. The latest
-            SEC/issuer filing pages checked still showed the May 11 S-1/A and 8-A, with no final 424B4 listed yet.
+            SEC/issuer filing pages checked showed May 14 S-8 filings with fresher share counts and no final 424B4 listed yet.
           </span>
         </div>
         <div className="marketRules">
