@@ -201,21 +201,21 @@ const OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES = 219_728_541;
 const SHARE_BASES: ShareBasis[] = [
   {
     id: "official-basic",
-    label: "Official post-offering",
+    label: "Headline denominator",
     shares: OFFICIAL_POST_OFFERING_SHARES,
-    note: "30.0m Class A offered + 185.228541m Class B, per the May 11 S-1/A post-offering table."
+    note: "Current official market-cap denominator: 30.0m IPO Class A shares plus 185.228541m Class B shares."
   },
   {
     id: "official-overallotment",
-    label: "With over-allotment",
+    label: "If banks exercise option",
     shares: OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES,
-    note: "Official post-offering share count if underwriters exercise the 4.5m share option in full."
+    note: "Adds the 4.5m underwriter option. This can increase public shares after the IPO; it is not assumed in the headline."
   },
   {
     id: "official-potential-diluted",
-    label: "Potential diluted",
+    label: "If listed dilutives convert",
     shares: 308_116_278,
-    note: "Official post-offering shares plus specifically listed options, RSUs, PRSUs, warrants, and post-Dec Class N; excludes future 2026 plan/ESPP reserve pools."
+    note: "Scenario only: listed options, RSUs, PRSUs, warrants, and post-Dec Class N become shares. Not day-one float; not assumed to happen all at once."
   }
 ];
 
@@ -277,6 +277,16 @@ const formatMaybeFundingRate = (value: number | null | undefined) =>
         maximumFractionDigits: 4,
         minimumFractionDigits: 4
       }).format(value);
+
+const formatSignedUsd = (value: number, digits = 2) => `${value >= 0 ? "+" : ""}${formatUsd(value, digits)}`;
+
+const formatSignedPercent = (value: number) => `${value >= 0 ? "+" : ""}${formatPercent(value)}`;
+
+const formatVsIpo = (price: number | null | undefined) => {
+  if (price == null || !Number.isFinite(price)) return "vs IPO: n/a";
+  const diff = price - IPO_OFFER_PRICE;
+  return `vs $185 IPO: ${formatSignedUsd(diff)} / ${formatSignedPercent(diff / IPO_OFFER_PRICE)}`;
+};
 
 const formatMaybeNumber = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
@@ -1430,19 +1440,27 @@ function App() {
           icon={<Scale size={22} />}
           label="PM implied closing CBRS"
           value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
-          detail={`Expected value using official post-offering shares: ${(selectedBasis.shares / 1e6).toFixed(1)}m`}
+          detail={
+            expectedCap
+              ? `${formatVsIpo(polymarketSharePrice)}; using ${(selectedBasis.shares / 1e6).toFixed(1)}m shares`
+              : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
+          }
         />
         <MetricCard
           icon={<Scale size={22} />}
           label="PM closing price range"
           value={expectedCap ? `${formatUsd(shareP25, 0)}-${formatUsd(shareP75, 0)}` : "Loading"}
-          detail={`Central 50%; central 80% is ${formatUsd(shareP10, 0)}-${formatUsd(shareP90, 0)}`}
+          detail={
+            expectedCap
+              ? `Central 50%; vs IPO ${formatSignedUsd(shareP25 - IPO_OFFER_PRICE, 0)} to ${formatSignedUsd(shareP75 - IPO_OFFER_PRICE, 0)}`
+              : `Central 50%; central 80% is ${formatUsd(shareP10, 0)}-${formatUsd(shareP90, 0)}`
+          }
         />
         <MetricCard
           icon={<CircleDollarSign size={22} />}
           label="Hyperliquid xyz:CBRS"
           value={data.hyperPrice == null ? "Loading" : formatUsd(data.hyperPrice)}
-          detail="trade[XYZ] per-share IPOP market"
+          detail={data.hyperPrice == null ? "trade[XYZ] per-share IPOP market" : `${formatVsIpo(data.hyperPrice)}; trade[XYZ] IPOP`}
         />
         <MetricCard
           icon={<Activity size={22} />}
@@ -1488,13 +1506,17 @@ function App() {
             </strong>
           </div>
           <p className="basisNote">
-            The headline comparison uses the official post-offering share count from the latest S-1/A: 30.0m offered Class A shares plus 185.228541m
-            Class B shares. The alternatives below are audit views only; they do not drive the main dashboard.
+            The headline comparison uses the current official post-offering share count from the latest S-1/A. The rows below are denominator checks:
+            they show how the PM implied price changes if more shares are included, but they do not mean those shares are day-one float and they do not
+            drive the main dashboard.
           </p>
           <div className="basisAudit">
             {SHARE_BASES.map((basis) => (
               <div className="basisAuditRow" key={basis.id}>
-                <span>{basis.label}</span>
+                <div className="basisAuditText">
+                  <span>{basis.label}</span>
+                  <em>{basis.note}</em>
+                </div>
                 <strong>{(basis.shares / 1e6).toFixed(3)}m</strong>
                 <small>{expectedCap ? formatUsd(expectedCap / basis.shares) : "Loading"}</small>
               </div>
