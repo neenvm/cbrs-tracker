@@ -1,12 +1,12 @@
 # CBRS Tracker
 
-A small live dashboard for comparing Cerebras (`CBRS`) IPO price discovery across:
+A small dashboard for reviewing Cerebras (`CBRS`) IPO price discovery across:
 
 - Hyperliquid / trade[XYZ] `xyz:CBRS`
 - Polymarket's Cerebras IPO closing market-cap bracket markets
 - Official Cerebras IPO share-count and pricing disclosures
 
-The goal is to translate Polymarket's expected first-day closing market capitalization into an implied first-day closing per-share CBRS value, then compare that value with the live Hyperliquid/trade[XYZ] per-share market.
+The dashboard was built for IPO day, then archived after the May 14 close. Its goal is to show how Polymarket's expected first-day closing market capitalization translated into an implied per-share CBRS value, compare that with Hyperliquid/trade[XYZ], and preserve the final resolution outcome.
 
 ## What It Shows
 

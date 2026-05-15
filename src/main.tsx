@@ -2429,23 +2429,32 @@ function App() {
         <div>
           <div className="eyebrow">
             <Activity size={16} />
-            Live CBRS IPO price discovery
+            {polymarketClosed ? "Archived first-day recap" : "Live CBRS IPO price discovery"}
           </div>
-          <h1>Cerebras IPO Data</h1>
+          <h1>{polymarketClosed ? "Cerebras IPO Recap" : "Cerebras IPO Data"}</h1>
           <a className="byline" href="https://x.com/blade_" target="_blank" rel="noreferrer">
             by @blade_
           </a>
         </div>
-        <div className="statusRow">
-          <span className={`status ${polymarketClosed ? "closed" : data.polymarketStatus}`}>
-            <Wifi size={14} />
-            Polymarket {polymarketStatusLabel}
-          </span>
-          <span className={`status ${data.hyperStatus}`}>
-            <RefreshCw size={14} />
-            Hyperliquid {data.hyperStatus}
-          </span>
-        </div>
+        {polymarketClosed ? (
+          <div className="statusRow">
+            <span className="status closed">
+              <Wifi size={14} />
+              Archived after May 14 close
+            </span>
+          </div>
+        ) : (
+          <div className="statusRow">
+            <span className={`status ${data.polymarketStatus}`}>
+              <Wifi size={14} />
+              Polymarket {polymarketStatusLabel}
+            </span>
+            <span className={`status ${data.hyperStatus}`}>
+              <RefreshCw size={14} />
+              Hyperliquid {data.hyperStatus}
+            </span>
+          </div>
+        )}
       </header>
 
       {data.error ? (
@@ -2464,123 +2473,120 @@ function App() {
       ) : null}
 
       <section className="metricsGrid">
-        <MetricCard
-          icon={<BarChart3 size={22} />}
-          label={polymarketClosed ? "Resolved PM bracket cap" : "PM implied closing cap"}
-          value={polymarketClosed && resolvedBracketRow ? resolvedBracketRow.label : expectedCap ? formatCompactUsd(expectedCap) : "Loading"}
-          detail={
-            polymarketClosed && resolvedBracketRow
-              ? `Winning PM bracket; range ${formatImpliedPriceRange(resolvedBracketRow.low, resolvedBracketRow.high)}`
-              : "Blended from both bracket pages"
-          }
-        />
-        <MetricCard
-          icon={<Scale size={22} />}
-          label={polymarketClosed ? "Resolved bracket midpoint" : "PM midpoint close model"}
-          value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
-          detail={
-            polymarketClosed && nasdaqClosePrice != null
-              ? `Not actual close; Nasdaq close ${formatUsd(nasdaqClosePrice)}`
-              : expectedCap
-                ? `${formatVsIpo(polymarketSharePrice)}; assumes midpoint inside each PM bracket`
-                : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
-          }
-        />
         {polymarketClosed ? (
-          <MetricCard
-            icon={<CircleDollarSign size={22} />}
-            label="Nasdaq official close"
-            value={nasdaqClosePrice == null ? "Loading" : formatUsd(nasdaqClosePrice)}
-            detail={
-              nasdaqClosePrice == null
-                ? "Waiting for Nasdaq close feed"
-                : `${formatVsIpo(nasdaqClosePrice)}; cap ${nasdaqCloseCap == null ? "n/a" : formatCompactUsd(nasdaqCloseCap)}`
-            }
-          />
-        ) : null}
-        <MetricCard
-          icon={<Scale size={22} />}
-          label={polymarketClosed ? "Winning PM bracket" : "Most likely PM bracket"}
-          value={(polymarketClosed ? resolvedBracketRow : topProbabilityRow) ? (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.label : "Loading"}
-          detail={
-            (polymarketClosed ? resolvedBracketRow : topProbabilityRow)
-              ? `${polymarketClosed ? "Resolved Yes" : `${formatPercent(topProbabilityRow!.probability)} probability`} · implied close ${formatImpliedPriceRange(
-                  (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.low,
-                  (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.high
-                )}`
-              : "Highest probability bucket from live PM distribution"
-          }
-        />
-        <MetricCard
-          icon={<CircleDollarSign size={22} />}
-          label="Hyperliquid xyz:CBRS"
-          value={data.hyperPrice == null ? "Loading" : formatUsd(data.hyperPrice)}
-          detail={data.hyperPrice == null ? "trade[XYZ] per-share IPOP market" : `${formatVsIpo(data.hyperPrice)}; trade[XYZ] IPOP`}
-        />
-        <MetricCard
-          icon={<Activity size={22} />}
-          label={polymarketClosed ? "Actual vs bracket midpoint" : "Adj PM close > HL"}
-          value={
-            polymarketClosed
-              ? nasdaqCloseVsMidpoint == null
-                ? "Loading"
-                : `${nasdaqCloseVsMidpoint >= 0 ? "+" : ""}${formatUsd(nasdaqCloseVsMidpoint)}`
-              : probabilityAboveHlAdjusted == null
-                ? "Loading"
-                : formatPercent(probabilityAboveHlAdjusted)
-          }
-          detail={
-            polymarketClosed
-              ? "Nasdaq close minus PM winning-bracket midpoint"
-              : data.hyperPrice == null
-              ? "Waiting for live Hyperliquid price"
-              : `Raw PM ${probabilityAboveHlRaw == null ? "n/a" : formatPercent(probabilityAboveHlRaw)}; reliability haircut ${formatPercent(distributionReliability)}`
-          }
-          tone={
-            polymarketClosed
-              ? nasdaqCloseVsMidpoint == null
-                ? "neutral"
-                : nasdaqCloseVsMidpoint >= 0
-                  ? "positive"
-                  : "negative"
-              : probabilityAboveHlAdjusted == null
-                ? "neutral"
-                : probabilityAboveHlAdjusted >= 0.5
-                  ? "positive"
-                  : "negative"
-          }
-        />
-        <MetricCard
-          icon={<Activity size={22} />}
-          label="HL vs PM midpoint"
-          value={spread == null ? "Loading" : `${spread >= 0 ? "+" : ""}${formatUsd(spread)}`}
-          detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus midpoint model`}
-          tone={spread == null ? "neutral" : spread >= 0 ? "positive" : "negative"}
-        />
-        <MetricCard
-          icon={<BarChart3 size={22} />}
-          label="PM 24h volume"
-          value={formatMaybeCompactUsd(pmVolume24h)}
-          detail="Event-level volume across both PM links"
-        />
-        <MetricCard
-          icon={<BarChart3 size={22} />}
-          label="PM total volume"
-          value={formatMaybeCompactUsd(pmVolumeTotal)}
-          detail="Combined lifetime volume across both event pages"
-        />
-        <MetricCard
-          icon={<CircleDollarSign size={22} />}
-          label="HL implied cap"
-          value={hyperImpliedCap == null ? "Loading" : formatCompactUsd(hyperImpliedCap)}
-          detail={
-            hyperImpliedCap == null || data.hyperPrice == null
-              ? "Hyperliquid price x 219.3m official shares"
-              : `${formatUsd(data.hyperPrice)} x 219.3m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
-                  (hyperImpliedCap - officialIpoCap) / officialIpoCap
-                )} vs IPO cap`
-          }
-        />
+          <>
+            <MetricCard
+              icon={<CircleDollarSign size={22} />}
+              label="Nasdaq official close"
+              value={nasdaqClosePrice == null ? "Loading" : formatUsd(nasdaqClosePrice)}
+              detail={
+                nasdaqClosePrice == null
+                  ? "Waiting for Nasdaq close feed"
+                  : `${formatVsIpo(nasdaqClosePrice)}; cap ${nasdaqCloseCap == null ? "n/a" : formatCompactUsd(nasdaqCloseCap)}`
+              }
+            />
+            <MetricCard
+              icon={<Scale size={22} />}
+              label="Winning PM bracket"
+              value={resolvedBracketRow ? resolvedBracketRow.label : "Loading"}
+              detail={
+                resolvedBracketRow
+                  ? `Resolved Yes; implied close ${formatImpliedPriceRange(resolvedBracketRow.low, resolvedBracketRow.high)}`
+                  : "Waiting for resolved market"
+              }
+            />
+            <MetricCard
+              icon={<BarChart3 size={22} />}
+              label="Resolved bracket midpoint"
+              value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
+              detail={nasdaqClosePrice == null ? "Bracket center, not actual close" : `Actual close was ${formatUsd(nasdaqClosePrice)}`}
+            />
+            <MetricCard
+              icon={<Activity size={22} />}
+              label="Actual vs midpoint"
+              value={nasdaqCloseVsMidpoint == null ? "Loading" : `${nasdaqCloseVsMidpoint >= 0 ? "+" : ""}${formatUsd(nasdaqCloseVsMidpoint)}`}
+              detail="Nasdaq close minus PM winning-bracket midpoint"
+              tone={nasdaqCloseVsMidpoint == null ? "neutral" : nasdaqCloseVsMidpoint >= 0 ? "positive" : "negative"}
+            />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              icon={<BarChart3 size={22} />}
+              label="PM implied closing cap"
+              value={expectedCap ? formatCompactUsd(expectedCap) : "Loading"}
+              detail="Blended from both bracket pages"
+            />
+            <MetricCard
+              icon={<Scale size={22} />}
+              label="PM midpoint close model"
+              value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
+              detail={
+                expectedCap
+                  ? `${formatVsIpo(polymarketSharePrice)}; assumes midpoint inside each PM bracket`
+                  : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
+              }
+            />
+            <MetricCard
+              icon={<Scale size={22} />}
+              label="Most likely PM bracket"
+              value={topProbabilityRow ? topProbabilityRow.label : "Loading"}
+              detail={
+                topProbabilityRow
+                  ? `${formatPercent(topProbabilityRow.probability)} probability · implied close ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}`
+                  : "Highest probability bucket from live PM distribution"
+              }
+            />
+            <MetricCard
+              icon={<CircleDollarSign size={22} />}
+              label="Hyperliquid xyz:CBRS"
+              value={data.hyperPrice == null ? "Loading" : formatUsd(data.hyperPrice)}
+              detail={data.hyperPrice == null ? "trade[XYZ] per-share IPOP market" : `${formatVsIpo(data.hyperPrice)}; trade[XYZ] IPOP`}
+            />
+            <MetricCard
+              icon={<Activity size={22} />}
+              label="Adj PM close > HL"
+              value={probabilityAboveHlAdjusted == null ? "Loading" : formatPercent(probabilityAboveHlAdjusted)}
+              detail={
+                data.hyperPrice == null
+                  ? "Waiting for live Hyperliquid price"
+                  : `Raw PM ${probabilityAboveHlRaw == null ? "n/a" : formatPercent(probabilityAboveHlRaw)}; reliability haircut ${formatPercent(distributionReliability)}`
+              }
+              tone={probabilityAboveHlAdjusted == null ? "neutral" : probabilityAboveHlAdjusted >= 0.5 ? "positive" : "negative"}
+            />
+            <MetricCard
+              icon={<Activity size={22} />}
+              label="HL vs PM midpoint"
+              value={spread == null ? "Loading" : `${spread >= 0 ? "+" : ""}${formatUsd(spread)}`}
+              detail={spreadPct == null ? "Waiting for live price" : `${spreadPct >= 0 ? "+" : ""}${formatPercent(spreadPct)} versus midpoint model`}
+              tone={spread == null ? "neutral" : spread >= 0 ? "positive" : "negative"}
+            />
+            <MetricCard
+              icon={<BarChart3 size={22} />}
+              label="PM 24h volume"
+              value={formatMaybeCompactUsd(pmVolume24h)}
+              detail="Event-level volume across both PM links"
+            />
+            <MetricCard
+              icon={<BarChart3 size={22} />}
+              label="PM total volume"
+              value={formatMaybeCompactUsd(pmVolumeTotal)}
+              detail="Combined lifetime volume across both event pages"
+            />
+            <MetricCard
+              icon={<CircleDollarSign size={22} />}
+              label="HL implied cap"
+              value={hyperImpliedCap == null ? "Loading" : formatCompactUsd(hyperImpliedCap)}
+              detail={
+                hyperImpliedCap == null || data.hyperPrice == null
+                  ? "Hyperliquid price x 219.3m official shares"
+                  : `${formatUsd(data.hyperPrice)} x 219.3m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
+                      (hyperImpliedCap - officialIpoCap) / officialIpoCap
+                    )} vs IPO cap`
+              }
+            />
+          </>
+        )}
       </section>
 
       <section className="workspace">
@@ -2869,6 +2875,7 @@ function App() {
         </div>
       </section>
 
+      {!polymarketClosed ? (
       <section className="panel qualityPanel">
         <div className="panelHeader">
           <div>
@@ -3011,7 +3018,9 @@ function App() {
           {formatMaybeCompactUsd(distributionDepth)}.
         </p>
       </section>
+      ) : null}
 
+      {!polymarketClosed ? (
       <section className="panel tradeMonitorPanel">
         <div className="panelHeader">
           <div>
@@ -3180,6 +3189,7 @@ function App() {
           wallets; wallet-linked rows come from the Data API as soon as it updates.
         </p>
       </section>
+      ) : null}
 
       <section className="panel ipoPanel">
         <div className="panelHeader">
@@ -3237,6 +3247,7 @@ function App() {
         </div>
       </section>
 
+      {!polymarketClosed ? (
       <section className="panel tablePanel">
         <div className="panelHeader">
           <div>
@@ -3290,6 +3301,7 @@ function App() {
           </table>
         </div>
       </section>
+      ) : null}
     </main>
   );
 }
