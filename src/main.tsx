@@ -1,5 +1,6 @@
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { Analytics } from "@vercel/analytics/react";
 import {
   CandlestickSeries,
   ColorType,
@@ -3301,4 +3302,9 @@ declare global {
 
 const container = document.getElementById("root")!;
 window.__cbrsRoot ??= createRoot(container);
-window.__cbrsRoot.render(<App />);
+window.__cbrsRoot.render(
+  <>
+    <App />
+    <Analytics />
+  </>
+);
