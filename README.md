@@ -55,6 +55,8 @@ bracket market-cap boundary / 219,295,148 latest official shares
 
 Those bracket price ranges are deterministic filing-based mappings, not extra model output.
 
+After Polymarket resolves, the app treats the winning market as a range, not an exact closing price. The displayed bracket midpoint is only the center of that bucket; the exact first-day close is pulled separately from Nasdaq's quote feed when available.
+
 ## Live Data Behavior
 
 Hyperliquid:
@@ -134,6 +136,7 @@ The included `vercel.json` proxies these public endpoints in production:
 - `/polymarket-clob/*` -> Polymarket CLOB
 - `/polymarket-data/*` -> Polymarket Data API
 - `/hyperliquid-info` -> Hyperliquid Info API
+- `/nasdaq-api/*` -> Nasdaq quote API for the official close display
 
 The live WebSocket connections go directly to Polymarket CLOB and Hyperliquid. `.vercelignore` excludes local task notes, `node_modules`, and build output from the deployment upload.
 

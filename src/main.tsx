@@ -177,6 +177,12 @@ type HyperQuality = {
   bookTime: number | null;
 };
 
+type NasdaqClose = {
+  close: number;
+  timestamp: string;
+  afterHoursPrice: number | null;
+};
+
 type PriceConfidence = "high" | "medium" | "low";
 
 type MarketBracket = {
@@ -262,6 +268,7 @@ type DashboardState = {
   polymarketStreamStatus: "connecting" | "streaming" | "polling";
   hyperPrice: number | null;
   hyperQuality: HyperQuality | null;
+  nasdaqClose: NasdaqClose | null;
   hyperStatus: "connecting" | "live" | "polling" | "stale" | "error";
   polymarketStatus: "loading" | "live" | "error";
   lastUpdated: number | null;
@@ -376,6 +383,13 @@ const formatMaybeNumber = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
     ? "n/a"
     : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+
+const parseUsdValue = (value: string | number | null | undefined) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (!value) return null;
+  const parsed = Number(value.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const formatSignedCompactUsd = (value: number) => `${value >= 0 ? "+" : ""}${formatCompactUsd(value)}`;
 
@@ -996,6 +1010,28 @@ async function fetchHyperQuality() {
   };
 }
 
+async function fetchNasdaqClose() {
+  const response = await fetch("/nasdaq-api/quote/CBRS/info?assetclass=stocks", {
+    headers: {
+      accept: "application/json"
+    }
+  });
+  if (!response.ok) throw new Error(`Nasdaq quote returned ${response.status}`);
+  const payload = (await response.json()) as {
+    data?: {
+      primaryData?: { lastSalePrice?: string; lastTradeTimestamp?: string };
+      secondaryData?: { lastSalePrice?: string; lastTradeTimestamp?: string };
+    };
+  };
+  const close = parseUsdValue(payload.data?.secondaryData?.lastSalePrice);
+  if (close == null) return null;
+  return {
+    close,
+    timestamp: payload.data?.secondaryData?.lastTradeTimestamp ?? "Closed at May 14, 2026 4:00 PM ET",
+    afterHoursPrice: parseUsdValue(payload.data?.primaryData?.lastSalePrice)
+  };
+}
+
 const normalizeHyperCandles = (candles: HyperCandle[]): ChartCandle[] =>
   candles
     .map((candle) => ({
@@ -1167,6 +1203,7 @@ function useDashboardData() {
     polymarketStreamStatus: "connecting",
     hyperPrice: null,
     hyperQuality: null,
+    nasdaqClose: null,
     hyperStatus: "connecting",
     polymarketStatus: "loading",
     lastUpdated: null,
@@ -1449,12 +1486,17 @@ function useDashboardData() {
 
     const pollHyper = async (status: DashboardState["hyperStatus"] = "polling") => {
       try {
-        const [hyperPrice, hyperQuality] = await Promise.all([fetchHyperMid(), fetchHyperQuality()]);
+        const [hyperPrice, hyperQuality, nasdaqClose] = await Promise.all([
+          fetchHyperMid(),
+          fetchHyperQuality(),
+          fetchNasdaqClose().catch(() => null)
+        ]);
         if (cancelled) return;
         setState((current) => ({
           ...current,
           hyperPrice,
           hyperQuality,
+          nasdaqClose: nasdaqClose ?? current.nasdaqClose,
           hyperStatus: current.hyperStatus === "live" && status === "polling" ? "live" : status,
           lastUpdated: Date.now(),
           error: current.polymarketStatus === "error" ? current.error : null
@@ -2233,6 +2275,9 @@ function App() {
   const spreadPct = data.hyperPrice == null ? null : spread! / polymarketSharePrice;
   const offerToPm = polymarketSharePrice - IPO_OFFER_PRICE;
   const offerToHl = data.hyperPrice == null ? null : data.hyperPrice - IPO_OFFER_PRICE;
+  const nasdaqClosePrice = data.nasdaqClose?.close ?? null;
+  const nasdaqCloseCap = nasdaqClosePrice == null ? null : nasdaqClosePrice * OFFICIAL_POST_OFFERING_SHARES;
+  const nasdaqCloseVsMidpoint = nasdaqClosePrice == null ? null : nasdaqClosePrice - polymarketSharePrice;
   const officialIpoCap = IPO_OFFER_PRICE * OFFICIAL_POST_OFFERING_SHARES;
   const hyperImpliedCap = data.hyperPrice == null ? null : data.hyperPrice * OFFICIAL_POST_OFFERING_SHARES;
   const officialIpoCapWithOption = IPO_OFFER_PRICE * OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES;
@@ -2247,6 +2292,10 @@ function App() {
     (top, row) => (!top || row.probability > top.probability ? row : top),
     null
   );
+  const resolvedBracketRow =
+    polymarketClosed && distribution.length
+      ? distribution.find((row) => row.pageYesPrice != null && row.pageYesPrice >= 0.99) ?? topProbabilityRow
+      : null;
   const distributionLensRows = qualityRows.map((row) => {
     const { low, high } = boundsFor(row);
     return {
@@ -2260,6 +2309,7 @@ function App() {
     IPO_OFFER_PRICE,
     polymarketSharePrice,
     data.hyperPrice,
+    nasdaqClosePrice,
     ...distributionLensRows.flatMap((row) => [row.lowPrice, row.highPrice])
   ].filter((value): value is number => value != null && Number.isFinite(value));
   const lensRawMin = lensPrices.length ? Math.min(...lensPrices) : IPO_OFFER_PRICE;
@@ -2406,35 +2456,56 @@ function App() {
       {polymarketClosed ? (
         <div className="notice">
           <AlertTriangle size={18} />
-          Polymarket markets are closed or no longer accepting orders. The PM estimate now ignores stale order books and uses final/resolution fields or latest
-          trade/Gamma prices until settlement is fully reflected.
+          Polymarket is resolved. The bracket midpoint is not the actual close; it is only the center of the winning market-cap range. Exact first-day close
+          comes from Nasdaq{nasdaqClosePrice == null ? "." : `: ${formatUsd(nasdaqClosePrice)} (${data.nasdaqClose?.timestamp ?? "May 14 close"}).`}
         </div>
       ) : null}
 
       <section className="metricsGrid">
         <MetricCard
           icon={<BarChart3 size={22} />}
-          label="PM implied closing cap"
-          value={expectedCap ? formatCompactUsd(expectedCap) : "Loading"}
-          detail="Blended from both bracket pages"
-        />
-        <MetricCard
-          icon={<Scale size={22} />}
-          label="PM midpoint close model"
-          value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
+          label={polymarketClosed ? "Resolved PM bracket cap" : "PM implied closing cap"}
+          value={polymarketClosed && resolvedBracketRow ? resolvedBracketRow.label : expectedCap ? formatCompactUsd(expectedCap) : "Loading"}
           detail={
-            expectedCap
-              ? `${formatVsIpo(polymarketSharePrice)}; assumes midpoint inside each PM bracket`
-              : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
+            polymarketClosed && resolvedBracketRow
+              ? `Winning PM bracket; range ${formatImpliedPriceRange(resolvedBracketRow.low, resolvedBracketRow.high)}`
+              : "Blended from both bracket pages"
           }
         />
         <MetricCard
           icon={<Scale size={22} />}
-          label="Most likely PM bracket"
-          value={topProbabilityRow ? topProbabilityRow.label : "Loading"}
+          label={polymarketClosed ? "Resolved bracket midpoint" : "PM midpoint close model"}
+          value={expectedCap ? formatUsd(polymarketSharePrice) : "Loading"}
           detail={
-            topProbabilityRow
-              ? `${formatPercent(topProbabilityRow.probability)} probability · implied close ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}`
+            polymarketClosed && nasdaqClosePrice != null
+              ? `Not actual close; Nasdaq close ${formatUsd(nasdaqClosePrice)}`
+              : expectedCap
+                ? `${formatVsIpo(polymarketSharePrice)}; assumes midpoint inside each PM bracket`
+                : `Using ${(selectedBasis.shares / 1e6).toFixed(1)}m official shares`
+          }
+        />
+        {polymarketClosed ? (
+          <MetricCard
+            icon={<CircleDollarSign size={22} />}
+            label="Nasdaq official close"
+            value={nasdaqClosePrice == null ? "Loading" : formatUsd(nasdaqClosePrice)}
+            detail={
+              nasdaqClosePrice == null
+                ? "Waiting for Nasdaq close feed"
+                : `${formatVsIpo(nasdaqClosePrice)}; cap ${nasdaqCloseCap == null ? "n/a" : formatCompactUsd(nasdaqCloseCap)}`
+            }
+          />
+        ) : null}
+        <MetricCard
+          icon={<Scale size={22} />}
+          label={polymarketClosed ? "Winning PM bracket" : "Most likely PM bracket"}
+          value={(polymarketClosed ? resolvedBracketRow : topProbabilityRow) ? (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.label : "Loading"}
+          detail={
+            (polymarketClosed ? resolvedBracketRow : topProbabilityRow)
+              ? `${polymarketClosed ? "Resolved Yes" : `${formatPercent(topProbabilityRow!.probability)} probability`} · implied close ${formatImpliedPriceRange(
+                  (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.low,
+                  (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.high
+                )}`
               : "Highest probability bucket from live PM distribution"
           }
         />
@@ -2446,14 +2517,36 @@ function App() {
         />
         <MetricCard
           icon={<Activity size={22} />}
-          label="Adj PM close > HL"
-          value={probabilityAboveHlAdjusted == null ? "Loading" : formatPercent(probabilityAboveHlAdjusted)}
+          label={polymarketClosed ? "Actual vs bracket midpoint" : "Adj PM close > HL"}
+          value={
+            polymarketClosed
+              ? nasdaqCloseVsMidpoint == null
+                ? "Loading"
+                : `${nasdaqCloseVsMidpoint >= 0 ? "+" : ""}${formatUsd(nasdaqCloseVsMidpoint)}`
+              : probabilityAboveHlAdjusted == null
+                ? "Loading"
+                : formatPercent(probabilityAboveHlAdjusted)
+          }
           detail={
-            data.hyperPrice == null
+            polymarketClosed
+              ? "Nasdaq close minus PM winning-bracket midpoint"
+              : data.hyperPrice == null
               ? "Waiting for live Hyperliquid price"
               : `Raw PM ${probabilityAboveHlRaw == null ? "n/a" : formatPercent(probabilityAboveHlRaw)}; reliability haircut ${formatPercent(distributionReliability)}`
           }
-          tone={probabilityAboveHlAdjusted == null ? "neutral" : probabilityAboveHlAdjusted >= 0.5 ? "positive" : "negative"}
+          tone={
+            polymarketClosed
+              ? nasdaqCloseVsMidpoint == null
+                ? "neutral"
+                : nasdaqCloseVsMidpoint >= 0
+                  ? "positive"
+                  : "negative"
+              : probabilityAboveHlAdjusted == null
+                ? "neutral"
+                : probabilityAboveHlAdjusted >= 0.5
+                  ? "positive"
+                  : "negative"
+          }
         />
         <MetricCard
           icon={<Activity size={22} />}
@@ -2620,6 +2713,11 @@ function App() {
                   <span>PM {formatUsd(polymarketSharePrice)}</span>
                 </div>
               ) : null}
+              {nasdaqClosePrice == null ? null : (
+                <div className="lensMarker actual" style={{ left: lensPosition(nasdaqClosePrice) }}>
+                  <span>Close {formatUsd(nasdaqClosePrice)}</span>
+                </div>
+              )}
               {data.hyperPrice == null ? null : (
                 <div className="lensMarker hl" style={{ left: lensPosition(data.hyperPrice) }}>
                   <span>HL {formatUsd(data.hyperPrice)}</span>
@@ -2656,10 +2754,10 @@ function App() {
           <div className="formulaPanel">
             <div className="formulaHeader">
               <div>
-                <span>Live PM Calculation</span>
-                <strong>How the implied closing CBRS price is derived</strong>
+                <span>{polymarketClosed ? "Resolved PM Calculation" : "Live PM Calculation"}</span>
+                <strong>{polymarketClosed ? "Why the midpoint is not the final close" : "How the implied closing CBRS price is derived"}</strong>
               </div>
-              <em>updates with Polymarket quotes, trades, depth, and brackets</em>
+              <em>{polymarketClosed ? "Polymarket resolves brackets; Nasdaq gives the exact close" : "updates with Polymarket quotes, trades, depth, and brackets"}</em>
             </div>
             <div className="formulaGrid">
               <div className="equationStack" aria-label="Polymarket implied price equations">
@@ -2686,9 +2784,18 @@ function App() {
                     P<sub>CBRS close</sub> = E[M] / S = {formatCompactUsd(expectedCap)} /{" "}
                     {new Intl.NumberFormat("en-US").format(OFFICIAL_POST_OFFERING_SHARES)} = {formatUsd(polymarketSharePrice)}
                   </code>
-                  <span>official post-offering shares drive the headline price</span>
+                  <span>{polymarketClosed ? "after resolution, this is the winning-bracket midpoint, not the exact close" : "official post-offering shares drive the headline price"}</span>
                 </div>
-              </div>
+                {polymarketClosed && nasdaqClosePrice != null ? (
+                  <div className="equationLine liveEquation">
+                    <code>
+                      P<sub>Nasdaq close</sub> = {formatUsd(nasdaqClosePrice)}; M = P x S ={" "}
+                      {nasdaqCloseCap == null ? "n/a" : formatCompactUsd(nasdaqCloseCap)}
+                    </code>
+                    <span>official close lands inside the resolved {resolvedBracketRow?.label ?? "winning"} Polymarket bracket</span>
+                  </div>
+                ) : null}
+                </div>
               <div className="formulaVars">
                 <div>
                   <span>Probability mass</span>
@@ -2696,9 +2803,16 @@ function App() {
                   <small>Sum of blended bracket probabilities</small>
                 </div>
                 <div>
-                  <span>Top bracket</span>
-                  <strong>{topProbabilityRow ? topProbabilityRow.label : "n/a"}</strong>
-                  <small>{topProbabilityRow ? `${formatPercent(topProbabilityRow.probability)} at ${formatImpliedPriceRange(topProbabilityRow.low, topProbabilityRow.high)}` : "Waiting for markets"}</small>
+                  <span>{polymarketClosed ? "Winning bracket" : "Top bracket"}</span>
+                  <strong>{(polymarketClosed ? resolvedBracketRow : topProbabilityRow) ? (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.label : "n/a"}</strong>
+                  <small>
+                    {(polymarketClosed ? resolvedBracketRow : topProbabilityRow)
+                      ? `${polymarketClosed ? "Resolved Yes" : formatPercent(topProbabilityRow!.probability)} at ${formatImpliedPriceRange(
+                          (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.low,
+                          (polymarketClosed ? resolvedBracketRow : topProbabilityRow)!.high
+                        )}`
+                      : "Waiting for markets"}
+                  </small>
                 </div>
                 <div>
                   <span>Quote weight</span>
@@ -2731,11 +2845,17 @@ function App() {
             </div>
           </div>
           <p className="caption">
-            The PM midpoint close model is the expected first-day closing market cap from a robust live distribution, divided by the latest official
-            post-offering share count. The bracket rows show both Polymarket's raw page Yes price and this dashboard's blended probability; they can differ
-            because the two Polymarket pages are separate binary markets that are anchored through the &lt;$50B / at least $50B overlap before normalization.
-            Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
-            the current Gamma price, falling back to last trade only if needed, so a thin top-of-book spoof cannot fully drive the headline. Historical PM chart
+            {polymarketClosed
+              ? "After resolution, Polymarket only identifies the winning market-cap bracket. The displayed PM midpoint is the center of that bracket, so it can differ materially from the actual Nasdaq closing price inside the same range. "
+              : "The PM midpoint close model is the expected first-day closing market cap from a robust live distribution, divided by the latest official post-offering share count. "}
+            {!polymarketClosed ? (
+              <>
+                The bracket rows show both Polymarket's raw page Yes price and this dashboard's blended probability; they can differ
+                because the two Polymarket pages are separate binary markets that are anchored through the &lt;$50B / at least $50B overlap before normalization.
+                Each bracket uses live quotes when the book is tight and deep, but wide/shallow or quote-only moves are damped toward
+                the current Gamma price, falling back to last trade only if needed, so a thin top-of-book spoof cannot fully drive the headline.
+              </>
+            ) : null} Historical PM chart
             points are reconstructed from the
             highest-density accepted public CLOB Yes-token history (
             {POLYMARKET_HISTORY_FIDELITY_MINUTES}-minute fidelity across the last {POLYMARKET_HISTORY_DAYS} days) for every required bracket/anchor market; no

@@ -24,6 +24,11 @@ export default defineConfig({
         target: "https://api.hyperliquid.xyz",
         changeOrigin: true,
         rewrite: () => "/info"
+      },
+      "/nasdaq-api": {
+        target: "https://api.nasdaq.com/api",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/nasdaq-api/, "")
       }
     }
   }

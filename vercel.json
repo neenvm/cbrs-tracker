@@ -18,6 +18,10 @@
     {
       "source": "/hyperliquid-info",
       "destination": "https://api.hyperliquid.xyz/info"
+    },
+    {
+      "source": "/nasdaq-api/:path*",
+      "destination": "https://api.nasdaq.com/api/:path*"
     }
   ]
 }

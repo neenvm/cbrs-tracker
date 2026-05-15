@@ -668,6 +668,14 @@ h1 {
   background: var(--red);
 }
 
+.lensMarker.actual {
+  background: var(--green);
+}
+
+.lensMarker.actual span {
+  background: var(--green);
+}
+
 .lensAxis {
   display: flex;
   justify-content: space-between;
