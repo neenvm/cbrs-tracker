@@ -55,7 +55,7 @@ bracket market-cap boundary / 219,295,148 latest official shares
 
 Those bracket price ranges are deterministic filing-based mappings, not extra model output.
 
-After Polymarket resolves, the app treats the winning market as a range, not an exact closing price. The displayed bracket midpoint is only the center of that bucket; the exact first-day close is pulled separately from Nasdaq's quote feed when available.
+After Polymarket resolves, the app treats the winning market as a range, not an exact closing price. The displayed bracket midpoint is only the center of that bucket; the exact first-day close is pulled separately from Nasdaq's quote feed when available, with a static `$311.07` fallback for this completed IPO if Nasdaq blocks the production function.
 
 ## Live Data Behavior
 

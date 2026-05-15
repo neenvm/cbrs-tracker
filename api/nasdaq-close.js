@@ -5,6 +5,13 @@ const parseUsdValue = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const fallbackClose = () => ({
+  close: 311.07,
+  timestamp: "Closed at May 14, 2026 4:00 PM ET",
+  afterHoursPrice: null,
+  source: "static-official-close-fallback"
+});
+
 export default async function handler(_request, response) {
   try {
     const nasdaqResponse = await fetch("https://api.nasdaq.com/api/quote/CBRS/info?assetclass=stocks", {
@@ -25,7 +32,8 @@ export default async function handler(_request, response) {
     const payload = await nasdaqResponse.json();
     const close = parseUsdValue(payload?.data?.secondaryData?.lastSalePrice);
     if (close == null) {
-      response.status(502).json({ error: "Nasdaq close missing" });
+      response.setHeader("cache-control", "s-maxage=300, stale-while-revalidate=3600");
+      response.status(200).json(fallbackClose());
       return;
     }
 
@@ -33,9 +41,11 @@ export default async function handler(_request, response) {
     response.status(200).json({
       close,
       timestamp: payload?.data?.secondaryData?.lastTradeTimestamp ?? "Closed at May 14, 2026 4:00 PM ET",
-      afterHoursPrice: parseUsdValue(payload?.data?.primaryData?.lastSalePrice)
+      afterHoursPrice: parseUsdValue(payload?.data?.primaryData?.lastSalePrice),
+      source: "nasdaq"
     });
   } catch (error) {
-    response.status(500).json({ error: error instanceof Error ? error.message : "Nasdaq close fetch failed" });
+    response.setHeader("cache-control", "s-maxage=300, stale-while-revalidate=3600");
+    response.status(200).json(fallbackClose());
   }
 }
