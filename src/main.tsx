@@ -1011,13 +1011,14 @@ async function fetchHyperQuality() {
 }
 
 async function fetchNasdaqClose() {
-  const response = await fetch("/nasdaq-api/quote/CBRS/info?assetclass=stocks", {
-    headers: {
-      accept: "application/json"
-    }
+  const apiResponse = await fetch("/api/nasdaq-close", { headers: { accept: "application/json" } });
+  if (apiResponse.ok) return (await apiResponse.json()) as NasdaqClose;
+
+  const proxyResponse = await fetch("/nasdaq-api/quote/CBRS/info?assetclass=stocks", {
+    headers: { accept: "application/json" }
   });
-  if (!response.ok) throw new Error(`Nasdaq quote returned ${response.status}`);
-  const payload = (await response.json()) as {
+  if (!proxyResponse.ok) throw new Error(`Nasdaq quote returned ${proxyResponse.status}`);
+  const payload = (await proxyResponse.json()) as {
     data?: {
       primaryData?: { lastSalePrice?: string; lastTradeTimestamp?: string };
       secondaryData?: { lastSalePrice?: string; lastTradeTimestamp?: string };

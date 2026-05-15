@@ -136,7 +136,8 @@ The included `vercel.json` proxies these public endpoints in production:
 - `/polymarket-clob/*` -> Polymarket CLOB
 - `/polymarket-data/*` -> Polymarket Data API
 - `/hyperliquid-info` -> Hyperliquid Info API
-- `/nasdaq-api/*` -> Nasdaq quote API for the official close display
+- `/api/nasdaq-close` -> Vercel function that fetches Nasdaq's official close display
+- `/nasdaq-api/*` -> local/dev Nasdaq proxy fallback
 
 The live WebSocket connections go directly to Polymarket CLOB and Hyperliquid. `.vercelignore` excludes local task notes, `node_modules`, and build output from the deployment upload.
 
