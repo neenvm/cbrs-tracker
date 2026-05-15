@@ -8,6 +8,16 @@ A small dashboard for reviewing Cerebras (`CBRS`) IPO price discovery across:
 
 The dashboard was built for IPO day, then archived after the May 14 close. Its goal is to show how Polymarket's expected first-day closing market capitalization translated into an implied per-share CBRS value, compare that with Hyperliquid/trade[XYZ], and preserve the final resolution outcome.
 
+## Brief Recap
+
+Before the open, the dashboard translated Polymarket's closing-market-cap distribution into a per-share estimate,
+
+```text
+P_CBRS = E[M_close] / S_official
+```
+
+and showed a persistent premium versus Hyperliquid while `xyz:CBRS` traded around `$280-$290`. That cross-venue discrepancy supported a bullish read before CBRS opened near `$350` and later traded to roughly `$385` on IPO day.
+
 ## What It Shows
 
 - Polymarket-implied expected first-day closing market cap
