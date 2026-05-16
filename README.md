@@ -45,7 +45,7 @@ The headline CBRS value is a midpoint model:
 E[Polymarket closing market cap] / official post-offering shares
 ```
 
-The current official share count used by the app is `219,295,148`, based on the May 14 S-8 reoffer prospectus: `30.0m` Class A shares, `185.613148m` Class B shares, and `3.682m` Class N shares. The `30.0m` offered shares are also shown separately as the base day-one public float, equal to about `13.7%` of the latest official share count before any underwriter option exercise. If the 4.5m-share option is fully exercised, option-adjusted IPO float is `34.5m` shares, or about `15.4%` of option-adjusted shares.
+The final official share count used by the app is `215,110,345`, based on the May 14 final prospectus (`424B4`). The `30.0m` offered shares are also shown separately as the base day-one public float, equal to about `13.9%` of the final official share count before any underwriter option exercise. If the 4.5m-share option is fully exercised, option-adjusted IPO float is `34.5m` shares, or about `15.7%` of option-adjusted shares.
 
 The methodology panel also includes denominator checks. These answer "what happens to the implied per-share price if more shares are included?" They do not mean those shares are day-one float, and they do not drive the headline comparison. For example, the listed-dilutive scenario includes options, RSUs, PRSUs, warrants, and post-December Class N shares listed in the S-1/A; it is a what-if denominator, not a statement that all of those shares will trade on day one.
 
@@ -60,7 +60,7 @@ The app also summarizes the Polymarket resolution rules: the markets resolve on 
 Every displayed market-cap bracket also shows its exact implied first-day closing CBRS price range under the current official denominator:
 
 ```text
-bracket market-cap boundary / 219,295,148 latest official shares
+bracket market-cap boundary / 215,110,345 final official shares
 ```
 
 Those bracket price ranges are deterministic filing-based mappings, not extra model output.

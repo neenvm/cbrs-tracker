@@ -286,8 +286,8 @@ const POLYMARKET_HISTORY_BUCKET_SECONDS = POLYMARKET_HISTORY_FIDELITY_MINUTES * 
 const IPO_OFFER_PRICE = 185;
 const IPO_OFFERED_SHARES = 30_000_000;
 const IPO_OVERALLOTMENT_SHARES = 4_500_000;
-const OFFICIAL_POST_OFFERING_SHARES = 219_295_148;
-const OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES = 223_795_148;
+const OFFICIAL_POST_OFFERING_SHARES = 215_110_345;
+const OFFICIAL_POST_OFFERING_WITH_OPTION_SHARES = 219_610_345;
 const POTENTIAL_DILUTED_SCENARIO_SHARES = 308_116_278;
 
 const SHARE_BASES: ShareBasis[] = [
@@ -295,7 +295,7 @@ const SHARE_BASES: ShareBasis[] = [
     id: "official-basic",
     label: "Headline denominator",
     shares: OFFICIAL_POST_OFFERING_SHARES,
-    note: "Current official market-cap denominator from the May 14 S-8 reoffer prospectus: 30.0m Class A, 185.613148m Class B, and 3.682m Class N shares."
+    note: "Final official market-cap denominator from the May 14 424B4 prospectus: total Class A, Class B, and Class N shares outstanding after the offering."
   },
   {
     id: "official-overallotment",
@@ -2579,8 +2579,8 @@ function App() {
               value={hyperImpliedCap == null ? "Loading" : formatCompactUsd(hyperImpliedCap)}
               detail={
                 hyperImpliedCap == null || data.hyperPrice == null
-                  ? "Hyperliquid price x 219.3m official shares"
-                  : `${formatUsd(data.hyperPrice)} x 219.3m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
+                  ? "Hyperliquid price x 215.1m official shares"
+                  : `${formatUsd(data.hyperPrice)} x 215.1m official shares; ${formatSignedCompactUsd(hyperImpliedCap - officialIpoCap)} / ${formatSignedPercent(
                       (hyperImpliedCap - officialIpoCap) / officialIpoCap
                     )} vs IPO cap`
               }
@@ -2606,7 +2606,7 @@ function App() {
             </strong>
           </div>
           <p className="basisNote">
-            The headline comparison uses the current official share count from the May 14 S-8 reoffer prospectus, which is newer than the last S-1/A. The rows below are denominator checks:
+            The headline comparison uses the final official share count from the May 14 424B4 prospectus. The rows below are denominator checks:
             they show how the PM implied price changes if more shares are included, but they do not mean those shares are day-one float and they do not
             drive the main dashboard.
           </p>
@@ -3204,13 +3204,13 @@ function App() {
           <DetailItem label="Base IPO float" value="30.0m" note="Class A shares sold in the IPO; this is the day-one public float before any underwriter option exercise." />
           <DetailItem label="Option-adjusted float" value="34.5m" note={`If the 4.5m underwriter option is fully exercised, float becomes ${formatPercent(offeredFloatWithOptionPct)} of option-adjusted post-offering shares.`} />
           <DetailItem label="Gross proceeds" value={formatCompactUsd(grossProceeds)} note={`Before discounts/expenses; ${formatCompactUsd(grossProceedsWithOption)} if the option is fully exercised.`} />
-          <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`Uses 219.295148m latest official shares; ${formatCompactUsd(officialIpoCapWithOption)} with over-allotment.`} />
+          <DetailItem label="Implied official cap" value={formatCompactUsd(officialIpoCap)} note={`Uses 215.110345m final official shares; ${formatCompactUsd(officialIpoCapWithOption)} with over-allotment.`} />
           <DetailItem
             label="Implied fully diluted cap"
             value={formatCompactUsd(impliedFullyDilutedCap)}
             note={`Scenario at $185 using ${(POTENTIAL_DILUTED_SCENARIO_SHARES / 1e6).toFixed(3)}m listed-dilutive shares; not the headline resolution denominator.`}
           />
-          <DetailItem label="Base float percent" value={formatPercent(offeredFloatPct)} note="30.0m IPO shares divided by 219.295148m latest official shares; this is separate from the market-cap denominator." />
+          <DetailItem label="Base float percent" value={formatPercent(offeredFloatPct)} note="30.0m IPO shares divided by 215.110345m final official shares; this is separate from the market-cap denominator." />
           <DetailItem label="Non-float context" value="185.2m Class B" note="Class B holders retain most economic ownership and about 99.2% of voting power; lock-up and market-standoff restrictions apply with exceptions." />
           <DetailItem label="PM closing vs offer" value={`${offerToPm >= 0 ? "+" : ""}${formatUsd(offerToPm)}`} note={`${offerToPm >= 0 ? "+" : ""}${formatPercent(offerToPm / IPO_OFFER_PRICE)} versus $185.`} />
           <DetailItem
@@ -3228,7 +3228,7 @@ function App() {
             offering, and lock-up/market-standoff restrictions generally run until the earlier of the second trading day after Q3 2026 earnings or 180 days
             after the prospectus date, with exceptions including some sell-to-cover activity. The S-1/A also highlights 2025 revenue of $510.0m, up 76%
             year over year, a multi-year OpenAI deal valued at more than $20B for 750 megawatts, and an AWS term sheet with binding provisions. The latest
-            SEC/issuer filing pages checked showed May 14 S-8 filings with fresher share counts and no final 424B4 listed yet.
+            The final May 14 424B4 prospectus states the post-offering share count used for the market-cap denominator.
           </span>
         </div>
         <div className="marketRules">
