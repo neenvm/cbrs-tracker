@@ -1,5 +1,7 @@
 # CBRS Tracker
 
+> Status: completed and archived after Cerebras' May 14, 2026 IPO day.
+
 A small dashboard for reviewing Cerebras (`CBRS`) IPO price discovery across:
 
 - Hyperliquid / trade[XYZ] `xyz:CBRS`
